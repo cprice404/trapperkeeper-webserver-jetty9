@@ -328,7 +328,7 @@
   (.start (:server webserver-context)))
 
 (defn add-handler
-  [webserver-context handler]
+  [webserver-context server-id handler]
   {:pre [(has-handlers? webserver-context)
          (instance? ContextHandler handler)]}
   (.addHandler (:handlers webserver-context) handler)
@@ -336,9 +336,9 @@
 
 (defn add-context-handler
   "Add a static content context handler (allow for customization of the context handler through javax.servlet.ServletContextListener implementations)"
-  ([webserver-context base-path context-path]
-   (add-context-handler webserver-context base-path context-path nil))
-  ([webserver-context base-path context-path context-listeners]
+  ([webserver-context server-id base-path context-path]
+   (add-context-handler webserver-context server-id base-path context-path nil))
+  ([webserver-context server-id base-path context-path context-listeners]
    {:pre [(has-handlers? webserver-context)
           (string? base-path)
           (string? context-path)
@@ -351,21 +351,21 @@
      (when-not (nil? context-listeners)
        (dorun (map #(.addEventListener handler %) context-listeners)))
      (.addServlet handler (ServletHolder. (DefaultServlet.)) "/")
-     (add-handler webserver-context handler))))
+     (add-handler webserver-context server-id handler))))
 
 (defn add-ring-handler
-  [webserver-context handler path]
+  [webserver-context server-id handler path]
   {:pre [(has-handlers? webserver-context)
          (ifn? handler)
          (string? path)]}
   (let [ctxt-handler (doto (ContextHandler. path)
                        (.setHandler (ring-handler handler)))]
-    (add-handler webserver-context ctxt-handler)))
+    (add-handler webserver-context server-id ctxt-handler)))
 
 (defn add-servlet-handler
-  ([webserver-context servlet path]
-   (add-servlet-handler webserver-context servlet path {}))
-  ([webserver-context servlet path servlet-init-params]
+  ([webserver-context server-id servlet path]
+   (add-servlet-handler webserver-context server-id servlet path {}))
+  ([webserver-context server-id servlet path servlet-init-params]
    {:pre [(has-handlers? webserver-context)
           (instance? Servlet servlet)
           (string? path)
@@ -375,20 +375,20 @@
          handler  (doto (ServletContextHandler. ServletContextHandler/SESSIONS)
                     (.setContextPath path)
                     (.addServlet holder "/*"))]
-     (add-handler webserver-context handler))))
+     (add-handler webserver-context server-id handler))))
 
 (defn add-war-handler
   "Registers a WAR to Jetty. It takes two arguments: `[war path]`.
   - `war` is the file path or the URL to a WAR file
   - `path` is the URL prefix at which the WAR will be registered"
-  [webserver-context war path]
+  [webserver-context server-id war path]
   {:pre [(has-handlers? webserver-context)
          (string? war)
          (string? path)]}
   (let [handler (doto (WebAppContext.)
                   (.setContextPath path)
                   (.setWar war))]
-    (add-handler webserver-context handler)))
+    (add-handler webserver-context server-id handler)))
 
 (defn add-proxy-route
   "Configures the Jetty server to proxy a given URL path to another host.
@@ -400,13 +400,14 @@
   and :ssl-config (value may be :use-server-config or a map containing :ssl-ca-cert,
   :ssl-cert, and :ssl-key).
   "
-  [webserver-context target path options]
+  [webserver-context server-id target path options]
   {:pre [(has-handlers? webserver-context)
          (proxy-target? target)
          (proxy-options? options)
          (string? path)]}
   (let [target (update-in target [:path] remove-leading-slash)]
     (add-servlet-handler webserver-context
+                         server-id
                          (proxy-servlet webserver-context target path options)
                          path)))
 
@@ -454,7 +455,7 @@
    If a call is made to this function after webserver startup or after another
    call has already been made to this function (e.g., from other service),
    a java.lang.IllegalStateException will be thrown."
-  [webserver-context overrides]
+  [webserver-context server-id overrides]
   {:pre  [(has-config? webserver-context)
           (map? overrides)]
    :post [(map? %)]}

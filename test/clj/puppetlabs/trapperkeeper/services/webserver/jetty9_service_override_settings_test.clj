@@ -19,7 +19,7 @@
   {:webserver {:ssl-host "0.0.0.0"
                :ssl-port 9001}})
 
-(deftest test-override-webserver-settings!
+(deftest test-override-webserver-settings
   (let [ssl-port  9001
         overrides {:ssl-port ssl-port
                    :ssl-host "0.0.0.0"

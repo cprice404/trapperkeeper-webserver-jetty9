@@ -9,11 +9,17 @@
 ;; a dependency for all webserver service implementations
 (defprotocol WebserverService
   (add-context-handler [this base-path context-path] [this base-path context-path context-listeners])
+  (add-context-handler-to [this server-id base-path context-path] [this server-id base-path context-path context-listeners])
   (add-ring-handler [this handler path])
+  (add-ring-handler-to [this server-id handler path])
   (add-servlet-handler [this servlet path] [this servlet path servlet-init-params])
+  (add-servlet-handler-to [this server-id servlet path] [this server-id servlet path servlet-init-params])
   (add-war-handler [this war path])
+  (add-war-handler-to [this server-id war path])
   (add-proxy-route [this target path] [this target path options])
+  (add-proxy-route-to [this server-id target path] [this server-id target path options])
   (override-webserver-settings! [this overrides])
+  (override-webserver-settings-on! [this server-id overrides])
   (join [this]))
 
 (defservice jetty9-service
@@ -40,41 +46,67 @@
         context)
 
   (add-context-handler [this base-path context-path]
-                       (let [s ((service-context this) :jetty9-server)]
-                         (core/add-context-handler s base-path context-path)))
+    (add-context-handler-to this :default base-path context-path))
 
   (add-context-handler [this base-path context-path context-listeners]
+    (add-context-handler-to this :default base-path context-path context-listeners))
+
+  (add-context-handler-to [this server-id base-path context-path]
                        (let [s ((service-context this) :jetty9-server)]
-                         (core/add-context-handler s base-path context-path context-listeners)))
+                         (core/add-context-handler s server-id base-path context-path)))
+
+  (add-context-handler-to [this server-id base-path context-path context-listeners]
+                       (let [s ((service-context this) :jetty9-server)]
+                         (core/add-context-handler s server-id base-path context-path context-listeners)))
 
   (add-ring-handler [this handler path]
+    (add-ring-handler-to this :default handler path))
+
+  (add-ring-handler-to [this server-id handler path]
                     (let [s ((service-context this) :jetty9-server)]
-                      (core/add-ring-handler s handler path)))
+                      (core/add-ring-handler s server-id handler path)))
 
   (add-servlet-handler [this servlet path]
-                       (let [s ((service-context this) :jetty9-server)]
-                         (core/add-servlet-handler s servlet path)))
+    (add-servlet-handler-to this :default servlet path))
 
   (add-servlet-handler [this servlet path servlet-init-params]
+    (add-servlet-handler-to this :default servlet path servlet-init-params))
+
+  (add-servlet-handler-to [this server-id servlet path]
                        (let [s ((service-context this) :jetty9-server)]
-                         (core/add-servlet-handler s servlet path servlet-init-params)))
+                         (core/add-servlet-handler s server-id servlet path)))
+
+  (add-servlet-handler-to [this server-id servlet path servlet-init-params]
+                       (let [s ((service-context this) :jetty9-server)]
+                         (core/add-servlet-handler s server-id servlet path servlet-init-params)))
 
   (add-war-handler [this war path]
+    (add-war-handler-to this :default war path))
+
+  (add-war-handler-to [this server-id war path]
                    (let [s ((service-context this) :jetty9-server)]
-                     (core/add-war-handler s war path)))
+                     (core/add-war-handler s server-id war path)))
 
   (add-proxy-route [this target path]
-                   (let [s ((service-context this) :jetty9-server)]
-                     (core/add-proxy-route s target path {})))
+    (add-proxy-route-to this :default target path))
 
   (add-proxy-route [this target path options]
+    (add-proxy-route-to this :default target path options))
+
+  (add-proxy-route-to [this server-id target path]
                    (let [s ((service-context this) :jetty9-server)]
-                     (core/add-proxy-route s target path options)))
+                     (core/add-proxy-route s server-id target path {})))
+
+  (add-proxy-route-to [this server-id target path options]
+                   (let [s ((service-context this) :jetty9-server)]
+                     (core/add-proxy-route s server-id target path options)))
 
   (override-webserver-settings! [this overrides]
+    (override-webserver-settings-on! this :default overrides))
+
+  (override-webserver-settings-on! [this server-id overrides]
                                 (let [s ((service-context this) :jetty9-server)]
-                                  (core/override-webserver-settings! s
-                                                                     overrides)))
+                                  (core/override-webserver-settings! s server-id overrides)))
 
   (join [this]
         (let [s ((service-context this) :jetty9-server)]

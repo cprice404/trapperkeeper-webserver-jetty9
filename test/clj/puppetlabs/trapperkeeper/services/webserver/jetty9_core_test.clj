@@ -12,6 +12,7 @@
     (let [webserver-context (jetty/create-handlers)
           handlers          (:handlers webserver-context)]
       (jetty/add-ring-handler webserver-context
+                              :server1
                               (fn [req] {:status 200
                                          :body "I am a handler"})
                               "/")
@@ -42,7 +43,7 @@
             (is (nil? (get-in resp [:headers "content-encoding"]))
                 (format "Expected uncompressed response, got this response: %s" resp))))))))
 
-(deftest override-webserver-settings!-tests
+(deftest override-webserver-settings-tests
   (testing "able to associate overrides when overrides not already set"
     (let [context {:config
                     (atom {:some-other-config-setting "some-other-value"})}]
@@ -50,6 +51,7 @@
               :override-2 "override-value-2"}
              (jetty/override-webserver-settings!
                context
+               :server1
                {:override-1 "override-value-1"
                 :override-2 "override-value-2"}))
           "Unexpected overrides returned from override-webserver-settings!")
@@ -67,6 +69,7 @@
                             #"overrides cannot be set because webserver has already processed the config"
                             (jetty/override-webserver-settings!
                               context
+                              :server1
                               {:override-1 "override-value-1"
                                :override-2 "override-value-2"}))
           "Call to override-webserver-settings! did not fail as expected.")
@@ -84,6 +87,7 @@
                             #"overrides cannot be set because they have already been set and webserver has already processed the config"
                             (jetty/override-webserver-settings!
                               context
+                              :server1
                               {:override-1 "override-value-1"
                                :override-2 "override-value-2"}))
           "Call to override-webserver-settings! did not fail as expected.")
@@ -100,6 +104,7 @@
                             #"overrides cannot be set because they have already been set"
                             (jetty/override-webserver-settings!
                               context
+                              :server1
                               {:override-1 "override-value-1"
                                :override-2 "override-value-2"}))
           "Call to override-webserver-settings! did not fail as expected.")
@@ -111,11 +116,13 @@
             into override-webserver-settings! that an exception is thrown."
     (is (thrown? AssertionError (jetty/override-webserver-settings!
                                   {:not-a-config "whatever"}
+                                  :server1
                                   {:override-1 "override-value-1"}))
         "Did not encounter expected exception for invalid config argument."))
   (testing "Confirm that when a bad overrides is passed
             into override-webserver-settings! that an exception is thrown."
     (is (thrown? AssertionError (jetty/override-webserver-settings!
                                   {:config (atom {})}
+                                  :server1
                                   nil))
         "Did not encounter expected exception for invalid override argument.")))
