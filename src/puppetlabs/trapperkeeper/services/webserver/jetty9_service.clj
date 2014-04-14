@@ -1,6 +1,8 @@
 (ns puppetlabs.trapperkeeper.services.webserver.jetty9-service
   (:require
     [clojure.tools.logging :as log]
+
+    [puppetlabs.trapperkeeper.services.webserver.jetty9-config :as config]
     [puppetlabs.trapperkeeper.services.webserver.jetty9-core :as core]
     [puppetlabs.trapperkeeper.core :refer [defservice]]))
 
@@ -22,10 +24,11 @@
   [[:ConfigService get-in-config]]
   (init [this context]
         (log/info "Initializing web server.")
-        (let [config (or (get-in-config [:webserver])
-                         ;; Here for backward compatibility with existing projects
-                         (get-in-config [:jetty])
-                         {})]
+        (let [config (-> (or (get-in-config [:webserver])
+                             ;; Here for backward compatibility with existing projects
+                            (get-in-config [:jetty])
+                            {})
+                         config/process-config)]
           (-> context
               (assoc :config config)
               (assoc :jetty9-server (core/create-handlers)))))

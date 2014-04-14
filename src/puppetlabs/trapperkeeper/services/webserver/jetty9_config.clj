@@ -1,8 +1,32 @@
 (ns puppetlabs.trapperkeeper.services.webserver.jetty9-config
   (:import [java.security KeyStore])
   (:require [clojure.tools.logging :as log]
+            [schema.core :as schema]
+            [schema.macros :as sm]
             [puppetlabs.certificate-authority.core :as ssl]
             [puppetlabs.kitchensink.core :refer [missing? num-cpus uuid]]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Schemas
+
+(def WebserverServiceRawConfig {(schema/optional-key :port) schema/Int})
+
+(def WebserverConnector {:host schema/Str :port schema/Int})
+
+(def WebserverConnectors (schema/either
+                           {:http WebserverConnector}
+                           {:https WebserverConnector}
+                           {:http WebserverConnector
+                            :https WebserverConnector}))
+
+(def WebserverServiceConfig {:connectors WebserverConnectors})
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Public
+
+(sm/defn ^:always-validate process-config :- WebserverServiceConfig
+  [config :- WebserverServiceRawConfig]
+  config)
 
 (defn configure-web-server-ssl-from-pems
   "Configures the web server's SSL settings based on PEM files, rather than

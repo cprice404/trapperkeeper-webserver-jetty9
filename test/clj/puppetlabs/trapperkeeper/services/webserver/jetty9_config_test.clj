@@ -1,8 +1,12 @@
 (ns puppetlabs.trapperkeeper.services.webserver.jetty9-config-test
   (:require [clojure.test :refer :all]
             [clojure.java.io :refer [resource]]
+            [schema.core :as schema]
             [puppetlabs.trapperkeeper.services.webserver.jetty9-config :refer :all]
             [puppetlabs.trapperkeeper.testutils.logging :refer [with-log-output logs-matching]]))
+
+(deftest process-config-test
+  (is (nil? (schema/check WebserverServiceConfig (process-config {:port 8080})))))
 
 (deftest http-configuration
   (testing "configure-web-server should set client-auth to a value of :need
