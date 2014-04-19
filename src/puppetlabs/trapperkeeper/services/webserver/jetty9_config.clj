@@ -9,24 +9,68 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Schemas
 
-(def WebserverServiceRawConfig {(schema/optional-key :port) schema/Int})
+(def WebserverServiceRawConfig {(schema/optional-key :port)         schema/Int
+                                (schema/optional-key :host)         schema/Str
+                                (schema/optional-key :ssl-port)     schema/Int
+                                (schema/optional-key :ssl-host)     schema/Str
+                                (schema/optional-key :ssl-key)      schema/Str
+                                (schema/optional-key :ssl-cert)     schema/Str
+                                (schema/optional-key :ssl-ca-cert)  schema/Str})
 
-(def WebserverConnector {:host schema/Str :port schema/Int})
+(def WebserverSslConfig {:keystore        KeyStore
+                         :key-password    schema/Str
+                         :truststore      KeyStore
+                         (schema/optional-key :trust-password) schema/Str})
 
-(def WebserverConnectors (schema/either
-                           {:http WebserverConnector}
-                           {:https WebserverConnector}
-                           {:http WebserverConnector
-                            :https WebserverConnector}))
+(def WebserverConnector {:host schema/Str
+                         :port schema/Int})
 
-(def WebserverServiceConfig {:connectors WebserverConnectors})
+(def WebserverSslConnector {:host schema/Str
+                            :port schema/Int
+                            :ssl-config WebserverSslConfig})
+
+(def WebserverServiceConfig (schema/either
+                              {:http  WebserverConnector}
+                              {:https WebserverSslConnector}
+                              {:http  WebserverConnector
+                               :https WebserverSslConnector}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
 
-(sm/defn ^:always-validate process-config :- WebserverServiceConfig
+(sm/defn ^:always-validate
+  maybe-get-http-connector :- (schema/maybe WebserverConnector)
   [config :- WebserverServiceRawConfig]
-  config)
+  (if (some #(contains? config %) #{:port :host})
+    {:host (or (:host config) "localhost")
+     :port (or (:port config) 8080)}))
+
+(sm/defn ^:always-validate
+  maybe-get-https-connector :- (schema/maybe WebserverSslConnector)
+  [config :- WebserverServiceRawConfig]
+  (if (some #(contains? config %) #{:ssl-port :ssl-host})
+    XXX))
+
+(sm/defn ^:always-validate
+  maybe-add-http-connector
+  [acc config :- WebserverServiceRawConfig]
+  (if-let [http-connector (maybe-get-http-connector config)]
+    (assoc acc :http http-connector)
+    acc))
+
+(sm/defn ^:always-validate
+  maybe-add-https-connector
+  [acc config :- WebserverServiceRawConfig]
+  (if-let [https-connector (maybe-get-https-connector config)]
+    (assoc acc :https https-connector)
+    acc))
+
+(sm/defn ^:always-validate
+  process-config :- WebserverServiceConfig
+  [config :- WebserverServiceRawConfig]
+  (-> {}
+      (maybe-add-http-connector config)
+      (maybe-add-https-connector config)))
 
 (defn configure-web-server-ssl-from-pems
   "Configures the web server's SSL settings based on PEM files, rather than

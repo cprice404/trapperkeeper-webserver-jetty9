@@ -1,12 +1,49 @@
 (ns puppetlabs.trapperkeeper.services.webserver.jetty9-config-test
+  (:import (clojure.lang ExceptionInfo))
   (:require [clojure.test :refer :all]
             [clojure.java.io :refer [resource]]
             [schema.core :as schema]
             [puppetlabs.trapperkeeper.services.webserver.jetty9-config :refer :all]
             [puppetlabs.trapperkeeper.testutils.logging :refer [with-log-output logs-matching]]))
 
+(def valid-ssl-pem-config
+  {:ssl-cert    "/tmp/cert.pem"
+   :ssl-key     "/tmp/key.pem"
+   :ssl-ca-cert "/tmp/ca.pem"})
+
 (deftest process-config-test
-  (is (nil? (schema/check WebserverServiceConfig (process-config {:port 8080})))))
+  (testing "process-config successfully builds a WebserverServiceConfig for plaintext connector"
+    (are [config expected]
+      (= expected (process-config config))
+
+      {:port 8000}
+      {:http {:host "localhost" :port 8000}}
+
+      {:port 8000 :host "foo.local"}
+      {:http {:host "foo.local" :port 8000}}
+
+      {:host "foo.local"}
+      {:http {:host "foo.local" :port 8080}}))
+
+  (testing "process-config successfully builds a WebserverServiceConfig for ssl connector"
+    (are [config expected]
+      (let [actual (process-config config)]
+        (= expected (update-in actual [:https] dissoc :ssl-config)))
+
+      (merge valid-ssl-pem-config {:ssl-host "foo.local"})
+      {:https {:host "foo.local" :port 8081}}))
+
+  (testing "process-config fails for invalid config"
+    (are [config]
+      (thrown? ExceptionInfo
+        (process-config config))
+      {}
+      {:port "foo"}
+      {:port 8000 :badkey "hi"}
+      {:ssl-port 8001}
+      {:ssl-port 8001 :ssl-host "foo.local"}
+      {:ssl-host ""}
+      valid-ssl-pem-config)))
 
 (deftest http-configuration
   (testing "configure-web-server should set client-auth to a value of :need
