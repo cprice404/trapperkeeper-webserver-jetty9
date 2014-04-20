@@ -7,9 +7,15 @@
             [puppetlabs.trapperkeeper.testutils.logging :refer [with-log-output logs-matching]]))
 
 (def valid-ssl-pem-config
-  {:ssl-cert    "/tmp/cert.pem"
-   :ssl-key     "/tmp/key.pem"
-   :ssl-ca-cert "/tmp/ca.pem"})
+  {:ssl-cert    "./dev-resources/config/jetty/ssl/certs/localhost.pem"
+   :ssl-key     "./dev-resources/config/jetty/ssl/private_keys/localhost.pem"
+   :ssl-ca-cert "./dev-resources/config/jetty/ssl/certs/ca.pem"})
+
+(def valid-ssl-keystore-config
+  {:keystore        "./dev-resources/config/jetty/ssl/keystore.jks"
+   :truststore      "./dev-resources/config/jetty/ssl/truststore.jks"
+   :key-password    "Kq8lG9LkISky9cDIYysiadxRx"
+   :trust-password  "Kq8lG9LkISky9cDIYysiadxRx"})
 
 (deftest process-config-test
   (testing "process-config successfully builds a WebserverServiceConfig for plaintext connector"
@@ -31,19 +37,33 @@
         (= expected (update-in actual [:https] dissoc :ssl-config)))
 
       (merge valid-ssl-pem-config {:ssl-host "foo.local"})
-      {:https {:host "foo.local" :port 8081}}))
+      {:https {:host "foo.local" :port 8081}}
 
-  (testing "process-config fails for invalid config"
+      (merge valid-ssl-pem-config {:ssl-port 8001})
+      {:https {:host "localhost" :port 8001}}
+
+      (merge valid-ssl-pem-config {:ssl-host "foo.local" :ssl-port 8001})
+      {:https {:host "foo.local" :port 8001}}
+
+      (merge valid-ssl-keystore-config {:ssl-port 8001})
+      {:https {:host "localhost" :port 8001}}))
+
+  (testing "process-config fails for invalid server config"
     (are [config]
       (thrown? ExceptionInfo
-        (process-config config))
+               (process-config config))
       {}
       {:port "foo"}
       {:port 8000 :badkey "hi"}
+      valid-ssl-pem-config))
+
+  (testing "process-config fails for incomplete ssl context config"
+    (are [config]
+      (thrown? IllegalArgumentException
+               (process-config config))
       {:ssl-port 8001}
       {:ssl-port 8001 :ssl-host "foo.local"}
-      {:ssl-host ""}
-      valid-ssl-pem-config)))
+      {:ssl-host "foo.local"})))
 
 (deftest http-configuration
   (testing "configure-web-server should set client-auth to a value of :need
