@@ -9,6 +9,23 @@
             [puppetlabs.kitchensink.core :refer [missing? num-cpus uuid]]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Constants / Defaults
+
+(def acceptable-ciphers
+  ["TLS_RSA_WITH_AES_256_CBC_SHA256"
+   "TLS_RSA_WITH_AES_256_CBC_SHA"
+   "TLS_RSA_WITH_AES_128_CBC_SHA256"
+   "TLS_RSA_WITH_AES_128_CBC_SHA"
+   "SSL_RSA_WITH_RC4_128_SHA"
+   "SSL_RSA_WITH_3DES_EDE_CBC_SHA"
+   "SSL_RSA_WITH_RC4_128_MD5"])
+
+(def default-http-port 8080)
+(def default-https-port 8081)
+(def default-host "localhost")
+(def default-max-threads 100)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Schemas
 
 (def WebserverServiceRawConfig
@@ -23,7 +40,8 @@
    (schema/optional-key :keystore)       schema/Str
    (schema/optional-key :truststore)     schema/Str
    (schema/optional-key :key-password)   schema/Str
-   (schema/optional-key :trust-password) schema/Str})
+   (schema/optional-key :trust-password) schema/Str
+   (schema/optional-key :cipher-suites)  [schema/Str]})
 
 (def WebserverSslPemConfig
   {:key      schema/Str
@@ -43,7 +61,8 @@
 (def WebserverSslConnector
   {:host schema/Str
    :port schema/Int
-   :keystore-config WebserverKeystoreConfig})
+   :keystore-config WebserverKeystoreConfig
+   :cipher-suites [schema/Str]})
 
 (def HasConnector
   (schema/either
@@ -128,16 +147,17 @@
   maybe-get-http-connector :- (schema/maybe WebserverConnector)
   [config :- WebserverServiceRawConfig]
   (if (some #(contains? config %) #{:port :host})
-    {:host (or (:host config) "localhost")
-     :port (or (:port config) 8080)}))
+    {:host (or (:host config) default-host)
+     :port (or (:port config) default-http-port)}))
 
 (sm/defn ^:always-validate
   maybe-get-https-connector :- (schema/maybe WebserverSslConnector)
   [config :- WebserverServiceRawConfig]
   (if (some #(contains? config %) #{:ssl-port :ssl-host})
-    {:host (or (:ssl-host config) "localhost")
-     :port (or (:ssl-port config) 8081)
-     :keystore-config (get-keystore-config! config)}))
+    {:host (or (:ssl-host config) default-host)
+     :port (or (:ssl-port config) default-https-port)
+     :keystore-config (get-keystore-config! config)
+     :cipher-suites (or (:cipher-suites config) acceptable-ciphers)}))
 
 (sm/defn ^:always-validate
   maybe-add-http-connector :- {(schema/optional-key :http) WebserverConnector
@@ -164,7 +184,7 @@
   (-> {}
       (maybe-add-http-connector config)
       (maybe-add-https-connector config)
-      (assoc :max-threads (get config :max-threads 100))))
+      (assoc :max-threads (get config :max-threads default-max-threads))))
 
 
 

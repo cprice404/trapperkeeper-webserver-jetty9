@@ -21,53 +21,55 @@
   (testing "process-config successfully builds a WebserverServiceConfig for plaintext connector"
     (are [config expected]
       (= (-> expected
-             (update-in [:max-threads] (fnil identity 100)))
+             (update-in [:max-threads] (fnil identity default-max-threads)))
          (process-config config))
 
       {:port 8000}
-      {:http {:host "localhost" :port 8000}}
+      {:http {:host default-host :port 8000}}
 
       {:port 8000 :host "foo.local"}
       {:http {:host "foo.local" :port 8000}}
 
       {:host "foo.local"}
-      {:http {:host "foo.local" :port 8080}}
+      {:http {:host "foo.local" :port default-http-port}}
 
       {:port 8000 :max-threads 500}
-      {:http {:host "localhost" :port 8000}
+      {:http {:host default-host :port 8000}
        :max-threads 500}))
 
   (testing "process-config successfully builds a WebserverServiceConfig for ssl connector"
     (are [config expected]
       (let [actual (process-config config)]
         (= (-> expected
-               (update-in [:max-threads] (fnil identity 100)))
+               (update-in [:max-threads] (fnil identity default-max-threads))
+               (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers)))
            (-> actual
                (update-in [:https] dissoc :keystore-config))))
 
       (merge valid-ssl-pem-config {:ssl-host "foo.local"})
-      {:https {:host "foo.local" :port 8081}}
+      {:https {:host "foo.local" :port default-https-port}}
 
       (merge valid-ssl-pem-config {:ssl-port 8001})
-      {:https {:host "localhost" :port 8001}}
+      {:https {:host default-host :port 8001}}
 
       (merge valid-ssl-pem-config {:ssl-host "foo.local" :ssl-port 8001})
       {:https {:host "foo.local" :port 8001}}
 
       (merge valid-ssl-keystore-config {:ssl-port 8001})
-      {:https {:host "localhost" :port 8001}}))
+      {:https {:host default-host :port 8001}}))
 
   (testing "process-config successfully builds a WebserverServiceConfig for plaintext+ssl"
     (are [config expected]
       (let [actual (process-config config)]
         (= (-> expected
-               (update-in [:max-threads] (fnil identity 100)))
+               (update-in [:max-threads] (fnil identity default-max-threads))
+               (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers)))
            (-> actual
                (update-in [:https] dissoc :keystore-config))))
 
       (merge valid-ssl-pem-config {:ssl-host "foo.local" :port 8000})
-      {:http {:host "localhost" :port 8000}
-       :https {:host "foo.local" :port 8081}}))
+      {:http {:host default-host :port 8000}
+       :https {:host "foo.local" :port default-https-port}}))
 
   (testing "process-config fails for invalid server config"
     (are [config]
