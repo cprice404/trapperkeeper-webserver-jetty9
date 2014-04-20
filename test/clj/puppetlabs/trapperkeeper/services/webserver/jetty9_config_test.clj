@@ -57,6 +57,18 @@
       (merge valid-ssl-keystore-config {:ssl-port 8001})
       {:https {:host "localhost" :port 8001}}))
 
+  (testing "process-config successfully builds a WebserverServiceConfig for plaintext+ssl"
+    (are [config expected]
+      (let [actual (process-config config)]
+        (= (-> expected
+               (update-in [:max-threads] (fnil identity 100)))
+           (-> actual
+               (update-in [:https] dissoc :ssl-config))))
+
+      (merge valid-ssl-pem-config {:ssl-host "foo.local" :port 8000})
+      {:http {:host "localhost" :port 8000}
+       :https {:host "foo.local" :port 8081}}))
+
   (testing "process-config fails for invalid server config"
     (are [config]
       (thrown? ExceptionInfo
