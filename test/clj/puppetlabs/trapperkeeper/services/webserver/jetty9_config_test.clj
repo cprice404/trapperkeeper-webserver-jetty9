@@ -42,7 +42,8 @@
       (let [actual (process-config config)]
         (= (-> expected
                (update-in [:max-threads] (fnil identity default-max-threads))
-               (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers)))
+               (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers))
+               (update-in [:https :protocols] (fnil identity nil)))
            (-> actual
                (update-in [:https] dissoc :keystore-config))))
 
@@ -63,7 +64,8 @@
       (let [actual (process-config config)]
         (= (-> expected
                (update-in [:max-threads] (fnil identity default-max-threads))
-               (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers)))
+               (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers))
+               (update-in [:https :protocols] (fnil identity nil)))
            (-> actual
                (update-in [:https] dissoc :keystore-config))))
 

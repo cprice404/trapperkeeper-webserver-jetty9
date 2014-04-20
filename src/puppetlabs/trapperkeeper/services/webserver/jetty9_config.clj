@@ -29,19 +29,20 @@
 ;;; Schemas
 
 (def WebserverServiceRawConfig
-  {(schema/optional-key :port)           schema/Int
-   (schema/optional-key :host)           schema/Str
-   (schema/optional-key :max-threads)    schema/Int
-   (schema/optional-key :ssl-port)       schema/Int
-   (schema/optional-key :ssl-host)       schema/Str
-   (schema/optional-key :ssl-key)        schema/Str
-   (schema/optional-key :ssl-cert)       schema/Str
-   (schema/optional-key :ssl-ca-cert)    schema/Str
-   (schema/optional-key :keystore)       schema/Str
-   (schema/optional-key :truststore)     schema/Str
-   (schema/optional-key :key-password)   schema/Str
-   (schema/optional-key :trust-password) schema/Str
-   (schema/optional-key :cipher-suites)  [schema/Str]})
+  {(schema/optional-key :port)            schema/Int
+   (schema/optional-key :host)            schema/Str
+   (schema/optional-key :max-threads)     schema/Int
+   (schema/optional-key :ssl-port)        schema/Int
+   (schema/optional-key :ssl-host)        schema/Str
+   (schema/optional-key :ssl-key)         schema/Str
+   (schema/optional-key :ssl-cert)        schema/Str
+   (schema/optional-key :ssl-ca-cert)     schema/Str
+   (schema/optional-key :keystore)        schema/Str
+   (schema/optional-key :truststore)      schema/Str
+   (schema/optional-key :key-password)    schema/Str
+   (schema/optional-key :trust-password)  schema/Str
+   (schema/optional-key :cipher-suites)   [schema/Str]
+   (schema/optional-key :ssl-protocols)   (schema/maybe [schema/Str])})
 
 (def WebserverSslPemConfig
   {:key      schema/Str
@@ -62,7 +63,8 @@
   {:host schema/Str
    :port schema/Int
    :keystore-config WebserverKeystoreConfig
-   :cipher-suites [schema/Str]})
+   :cipher-suites [schema/Str]
+   :protocols (schema/maybe [schema/Str])})
 
 (def HasConnector
   (schema/either
@@ -157,7 +159,8 @@
     {:host (or (:ssl-host config) default-host)
      :port (or (:ssl-port config) default-https-port)
      :keystore-config (get-keystore-config! config)
-     :cipher-suites (or (:cipher-suites config) acceptable-ciphers)}))
+     :cipher-suites (or (:cipher-suites config) acceptable-ciphers)
+     :protocols (:ssl-protocols config)}))
 
 (sm/defn ^:always-validate
   maybe-add-http-connector :- {(schema/optional-key :http) WebserverConnector
