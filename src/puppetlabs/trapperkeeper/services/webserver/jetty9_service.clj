@@ -24,17 +24,14 @@
   [[:ConfigService get-in-config]]
   (init [this context]
         (log/info "Initializing web server.")
-        (let [config (-> (or (get-in-config [:webserver])
-                             ;; Here for backward compatibility with existing projects
-                            (get-in-config [:jetty])
-                            {})
-                         config/process-config)]
-          (-> context
-              (assoc :config config)
-              (assoc :jetty9-server (core/create-handlers)))))
+        (assoc context :jetty9-server (core/create-handlers)))
 
   (start [this context]
-         (let [webserver (core/create-webserver (:config context) (:jetty9-server context))]
+         (let [config (or (get-in-config [:webserver])
+                          ;; Here for backward compatibility with existing projects
+                          (get-in-config [:jetty])
+                          {})
+               webserver (core/create-webserver config (:jetty9-server context))]
            (log/info "Starting web server.")
            (core/start-webserver webserver)
            (assoc context :jetty9-server webserver)))
