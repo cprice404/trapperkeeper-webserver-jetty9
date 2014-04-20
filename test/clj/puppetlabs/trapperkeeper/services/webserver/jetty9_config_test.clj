@@ -43,7 +43,8 @@
         (= (-> expected
                (update-in [:max-threads] (fnil identity default-max-threads))
                (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers))
-               (update-in [:https :protocols] (fnil identity nil)))
+               (update-in [:https :protocols] (fnil identity nil))
+               (update-in [:https :client-auth] (fnil identity default-client-auth)))
            (-> actual
                (update-in [:https] dissoc :keystore-config))))
 
@@ -65,7 +66,8 @@
         (= (-> expected
                (update-in [:max-threads] (fnil identity default-max-threads))
                (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers))
-               (update-in [:https :protocols] (fnil identity nil)))
+               (update-in [:https :protocols] (fnil identity nil))
+               (update-in [:https :client-auth] (fnil identity default-client-auth)))
            (-> actual
                (update-in [:https] dissoc :keystore-config))))
 

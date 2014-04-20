@@ -24,6 +24,7 @@
 (def default-https-port 8081)
 (def default-host "localhost")
 (def default-max-threads 100)
+(def default-client-auth :need)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Schemas
@@ -42,7 +43,9 @@
    (schema/optional-key :key-password)    schema/Str
    (schema/optional-key :trust-password)  schema/Str
    (schema/optional-key :cipher-suites)   [schema/Str]
-   (schema/optional-key :ssl-protocols)   (schema/maybe [schema/Str])})
+   (schema/optional-key :ssl-protocols)   (schema/maybe [schema/Str])
+   (schema/optional-key :client-auth)     (schema/maybe
+                                            (schema/enum "need" "want" "none"))})
 
 (def WebserverSslPemConfig
   {:key      schema/Str
@@ -64,7 +67,8 @@
    :port schema/Int
    :keystore-config WebserverKeystoreConfig
    :cipher-suites [schema/Str]
-   :protocols (schema/maybe [schema/Str])})
+   :protocols (schema/maybe [schema/Str])
+   :client-auth (schema/enum :need :want :auth)})
 
 (def HasConnector
   (schema/either
@@ -160,7 +164,8 @@
      :port (or (:ssl-port config) default-https-port)
      :keystore-config (get-keystore-config! config)
      :cipher-suites (or (:cipher-suites config) acceptable-ciphers)
-     :protocols (:ssl-protocols config)}))
+     :protocols (:ssl-protocols config)
+     :client-auth (or (keyword (:client-auth config)) default-client-auth)}))
 
 (sm/defn ^:always-validate
   maybe-add-http-connector :- {(schema/optional-key :http) WebserverConnector
