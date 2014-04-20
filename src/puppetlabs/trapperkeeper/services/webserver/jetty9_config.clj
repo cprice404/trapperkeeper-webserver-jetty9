@@ -30,7 +30,7 @@
    :cert     schema/Str
    :ca-cert  schema/Str})
 
-(def WebserverSslConfig
+(def WebserverKeystoreConfig
   {:keystore        KeyStore
    :key-password    schema/Str
    :truststore      KeyStore
@@ -43,7 +43,7 @@
 (def WebserverSslConnector
   {:host schema/Str
    :port schema/Int
-   :ssl-config WebserverSslConfig})
+   :keystore-config WebserverKeystoreConfig})
 
 (def HasConnector
   (schema/either
@@ -75,7 +75,7 @@
                        (keys pem-config) pem-required-keys))))))
 
 (sm/defn ^:always-validate
-  pem-ssl-config->keystore-ssl-config :- WebserverSslConfig
+  pem-ssl-config->keystore-ssl-config :- WebserverKeystoreConfig
   [{:keys [ca-cert key cert]} :- WebserverSslPemConfig]
   (let [key-password (uuid)]
     {:truststore    (-> (ssl/keystore)
@@ -96,7 +96,7 @@
                         (keys keystore-ssl-config))))))
 
 (sm/defn ^:always-validate
-  get-keystore-ssl-config! :- WebserverSslConfig
+  get-jks-keystore-config! :- WebserverKeystoreConfig
   [{:keys [truststore keystore key-password trust-password]}
       :- WebserverServiceRawConfig]
   (when (some nil? [truststore keystore key-password trust-password])
@@ -116,13 +116,13 @@
       result)))
 
 (sm/defn ^:always-validate
-  get-ssl-config! :- WebserverSslConfig
+  get-keystore-config! :- WebserverKeystoreConfig
   [config :- WebserverServiceRawConfig]
   (if-let [pem-config (maybe-get-pem-config! config)]
     (do
       (warn-if-keystore-ssl-configs-found! config)
       (pem-ssl-config->keystore-ssl-config pem-config))
-    (get-keystore-ssl-config! config)))
+    (get-jks-keystore-config! config)))
 
 (sm/defn ^:always-validate
   maybe-get-http-connector :- (schema/maybe WebserverConnector)
@@ -137,7 +137,7 @@
   (if (some #(contains? config %) #{:ssl-port :ssl-host})
     {:host (or (:ssl-host config) "localhost")
      :port (or (:ssl-port config) 8081)
-     :ssl-config (get-ssl-config! config)}))
+     :keystore-config (get-keystore-config! config)}))
 
 (sm/defn ^:always-validate
   maybe-add-http-connector :- {(schema/optional-key :http) WebserverConnector

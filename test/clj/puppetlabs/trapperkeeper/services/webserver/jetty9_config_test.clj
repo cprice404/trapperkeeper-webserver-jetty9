@@ -43,7 +43,7 @@
         (= (-> expected
                (update-in [:max-threads] (fnil identity 100)))
            (-> actual
-               (update-in [:https] dissoc :ssl-config))))
+               (update-in [:https] dissoc :keystore-config))))
 
       (merge valid-ssl-pem-config {:ssl-host "foo.local"})
       {:https {:host "foo.local" :port 8081}}
@@ -63,7 +63,7 @@
         (= (-> expected
                (update-in [:max-threads] (fnil identity 100)))
            (-> actual
-               (update-in [:https] dissoc :ssl-config))))
+               (update-in [:https] dissoc :keystore-config))))
 
       (merge valid-ssl-pem-config {:ssl-host "foo.local" :port 8000})
       {:http {:host "localhost" :port 8000}
