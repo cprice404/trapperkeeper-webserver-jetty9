@@ -19,6 +19,7 @@
    "SSL_RSA_WITH_RC4_128_SHA"
    "SSL_RSA_WITH_3DES_EDE_CBC_SHA"
    "SSL_RSA_WITH_RC4_128_MD5"])
+(def default-protocols nil)
 
 (def default-http-port 8080)
 (def default-https-port 8081)
@@ -43,9 +44,8 @@
    (schema/optional-key :key-password)    schema/Str
    (schema/optional-key :trust-password)  schema/Str
    (schema/optional-key :cipher-suites)   [schema/Str]
-   (schema/optional-key :ssl-protocols)   (schema/maybe [schema/Str])
-   (schema/optional-key :client-auth)     (schema/maybe
-                                            (schema/enum "need" "want" "none"))})
+   (schema/optional-key :ssl-protocols)   [schema/Str]
+   (schema/optional-key :client-auth)     (schema/enum "need" "want" "none")})
 
 (def WebserverSslPemConfig
   {:key      schema/Str

@@ -43,7 +43,7 @@
         (= (-> expected
                (update-in [:max-threads] (fnil identity default-max-threads))
                (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers))
-               (update-in [:https :protocols] (fnil identity nil))
+               (update-in [:https :protocols] (fnil identity default-protocols))
                (update-in [:https :client-auth] (fnil identity default-client-auth)))
            (-> actual
                (update-in [:https] dissoc :keystore-config))))
@@ -58,7 +58,16 @@
       {:https {:host "foo.local" :port 8001}}
 
       (merge valid-ssl-keystore-config {:ssl-port 8001})
-      {:https {:host default-host :port 8001}}))
+      {:https {:host default-host :port 8001}}
+
+      (merge valid-ssl-pem-config {:ssl-port 8001 :cipher-suites ["FOO" "BAR"]})
+      {:https {:host default-host :port 8001 :cipher-suites ["FOO" "BAR"]}}
+
+      (merge valid-ssl-pem-config {:ssl-port 8001 :ssl-protocols ["FOO" "BAR"]})
+      {:https {:host default-host :port 8001 :protocols ["FOO" "BAR"]}}
+
+      (merge valid-ssl-pem-config {:ssl-port 8001 :client-auth "want"})
+      {:https {:host default-host :port 8001 :client-auth :want}}))
 
   (testing "process-config successfully builds a WebserverServiceConfig for plaintext+ssl"
     (are [config expected]
@@ -66,7 +75,7 @@
         (= (-> expected
                (update-in [:max-threads] (fnil identity default-max-threads))
                (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers))
-               (update-in [:https :protocols] (fnil identity nil))
+               (update-in [:https :protocols] (fnil identity default-protocols))
                (update-in [:https :client-auth] (fnil identity default-client-auth)))
            (-> actual
                (update-in [:https] dissoc :keystore-config))))
