@@ -14,6 +14,7 @@
 (def WebserverServiceRawConfig
   {(schema/optional-key :port)           schema/Int
    (schema/optional-key :host)           schema/Str
+   (schema/optional-key :max-threads)    schema/Int
    (schema/optional-key :ssl-port)       schema/Int
    (schema/optional-key :ssl-host)       schema/Str
    (schema/optional-key :ssl-key)        schema/Str
@@ -53,7 +54,8 @@
   (schema/both
     HasConnector
     {(schema/optional-key :http)  WebserverConnector
-     (schema/optional-key :https) WebserverSslConnector}))
+     (schema/optional-key :https) WebserverSslConnector
+     :max-threads                 schema/Int}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Conversion functions (raw config -> schema)
@@ -138,14 +140,16 @@
      :ssl-config (get-ssl-config! config)}))
 
 (sm/defn ^:always-validate
-  maybe-add-http-connector :- (schema/either {} WebserverServiceConfig)
+  maybe-add-http-connector :- {(schema/optional-key :http) WebserverConnector
+                               schema/Keyword              schema/Any}
   [acc config :- WebserverServiceRawConfig]
   (if-let [http-connector (maybe-get-http-connector config)]
     (assoc acc :http http-connector)
     acc))
 
 (sm/defn ^:always-validate
-  maybe-add-https-connector :- (schema/either {} WebserverServiceConfig)
+  maybe-add-https-connector :- {(schema/optional-key :http) WebserverConnector
+                                schema/Keyword              schema/Any}
   [acc config :- WebserverServiceRawConfig]
   (if-let [https-connector (maybe-get-https-connector config)]
     (assoc acc :https https-connector)
@@ -159,7 +163,11 @@
   [config :- WebserverServiceRawConfig]
   (-> {}
       (maybe-add-http-connector config)
-      (maybe-add-https-connector config)))
+      (maybe-add-https-connector config)
+      (assoc :max-threads (get config :max-threads 100))))
+
+
+
 
 (defn configure-web-server-ssl-from-pems
   "Configures the web server's SSL settings based on PEM files, rather than

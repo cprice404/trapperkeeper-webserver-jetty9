@@ -20,7 +20,9 @@
 (deftest process-config-test
   (testing "process-config successfully builds a WebserverServiceConfig for plaintext connector"
     (are [config expected]
-      (= expected (process-config config))
+      (= (-> expected
+             (update-in [:max-threads] (fnil identity 100)))
+         (process-config config))
 
       {:port 8000}
       {:http {:host "localhost" :port 8000}}
@@ -29,12 +31,19 @@
       {:http {:host "foo.local" :port 8000}}
 
       {:host "foo.local"}
-      {:http {:host "foo.local" :port 8080}}))
+      {:http {:host "foo.local" :port 8080}}
+
+      {:port 8000 :max-threads 500}
+      {:http {:host "localhost" :port 8000}
+       :max-threads 500}))
 
   (testing "process-config successfully builds a WebserverServiceConfig for ssl connector"
     (are [config expected]
       (let [actual (process-config config)]
-        (= expected (update-in actual [:https] dissoc :ssl-config)))
+        (= (-> expected
+               (update-in [:max-threads] (fnil identity 100)))
+           (-> actual
+               (update-in [:https] dissoc :ssl-config))))
 
       (merge valid-ssl-pem-config {:ssl-host "foo.local"})
       {:https {:host "foo.local" :port 8081}}
