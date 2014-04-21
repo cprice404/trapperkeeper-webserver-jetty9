@@ -70,35 +70,11 @@
   (str/replace s #"^\/" ""))
 
 ; TODO :-
-#_(defn has-state?
-  "A predicate that indicates whether or not the webserver-context contains a
-  ':state' map, used for capturing any configuration settings that can be
-  atomically updated at run-time."
-  [webserver-context]
-  (and
-    (map? webserver-context)
-    (contains? webserver-context :state)
-    (map? @(:state webserver-context))))
-
-; TODO :-
-#_(defn has-handlers?
-  "A predicate that indicates whether or not the webserver-context contains a
-  ContextHandlerCollection which can have handlers attached to it."
-  [webserver-context]
-  (and
-    (map? webserver-context)
-    (instance? ContextHandlerCollection (:handlers webserver-context))))
-
-; TODO :-
 (sm/defn ^:always-validate has-webserver? :- Boolean
   "A predicate that indicates whether or not the webserver-context contains a Jetty
   Server object."
   [webserver-context :- WebserverServiceContext]
-  ;(and
-    ; (has-handlers? webserver-context)
-    (instance? Server (:server webserver-context))
-    ;)
-    )
+  (instance? Server (:server webserver-context)))
 
 ; TODO :-
 (defn proxy-target?
@@ -209,9 +185,7 @@
   [webserver-context :- WebserverServiceContext
    target ; TODO :-
    options :- ProxyOptions]
-  {:pre [;(has-state? webserver-context)
-         ;(has-handlers? webserver-context)
-         (proxy-target? target)]}
+  {:pre [(proxy-target? target)]}
   (let [custom-ssl-ctxt-factory (when (map? (:ssl-config options))
                                   (get-proxy-client-context-factory (:ssl-config options)))]
     (proxy [ProxyServlet] []
@@ -271,8 +245,7 @@
   ; TODO change order of arguments
   [options ; TODO :-
    webserver-context :- WebserverServiceContext]
-  {;:pre  [(has-state? webserver-context)]
-   :post [(map? %)]}
+  {:post [(map? %)]}
   (let [overrides (:overrides (swap! (:state webserver-context)
                                      assoc
                                      :overrides-read-by-webserver
@@ -313,10 +286,7 @@
     :ssl-protocols - list of protocols to allow for incoming SSL connections"
   [options :- config/WebserverServiceRawConfig
    webserver-context :- WebserverServiceContext]
-  {:pre  [(map? options)
-          ;(has-state? webserver-context)
-          ;(has-handlers? webserver-context)
-          ]
+  {:pre  [(map? options)]
    :post [(has-webserver? %)]}
     (let [config                (config/process-config
                                   (merge-webserver-overrides-with-options
@@ -335,7 +305,6 @@
   ContextHandlerCollection which can accept the addition of new handlers
   before the webserver is started."
   []
-  ;{:post [(has-handlers? %)]}
   (let [^ContextHandlerCollection chc (ContextHandlerCollection.)]
     {:handlers chc
      :state (atom {})
@@ -354,8 +323,6 @@
   add-handler :- ContextHandler
   [webserver-context :- WebserverServiceContext
    handler :- ContextHandler]
-  ;{:pre [;(has-handlers? webserver-context)
-  ;       (instance? ContextHandler handler)]}
   (.addHandler (:handlers webserver-context) handler)
   handler)
 
@@ -369,12 +336,6 @@
     base-path :- schema/Str
     context-path :- schema/Str
     context-listeners :- (schema/maybe [ServletContextListener])]
-   ;{:pre [(has-handlers? webserver-context)
-   ;       (string? base-path)
-   ;       (string? context-path)
-   ;       (or (nil? context-listeners)
-   ;           (and (sequential? context-listeners)
-   ;                (every? #(instance? ServletContextListener %) context-listeners)))]}
    (let [handler (ServletContextHandler. nil context-path ServletContextHandler/NO_SESSIONS)]
      (.setBaseResource handler (Resource/newResource base-path))
      ;; register servlet context listeners (if any)
@@ -389,9 +350,6 @@
   [webserver-context :- WebserverServiceContext
    handler :- (schema/pred ifn? 'ifn?)
    path :- schema/Str]
-  ;{:pre [(has-handlers? webserver-context)
-  ;       (ifn? handler)
-  ;       (string? path)]}
   (let [ctxt-handler (doto (ContextHandler. path)
                        (.setHandler (ring-handler handler)))]
     (add-handler webserver-context ctxt-handler)))
@@ -405,10 +363,6 @@
     servlet :- Servlet
     path :- schema/Str
     servlet-init-params :- {schema/Any schema/Any}]
-   ;{:pre [(has-handlers? webserver-context)
-   ;       (instance? Servlet servlet)
-   ;       (string? path)
-   ;       (map? servlet-init-params)]}
    (let [holder   (doto (ServletHolder. servlet)
                     (.setInitParameters servlet-init-params))
          handler  (doto (ServletContextHandler. ServletContextHandler/SESSIONS)
@@ -425,9 +379,6 @@
   [webserver-context :- WebserverServiceContext
    war :- schema/Str
    path :- schema/Str]
-  ;{:pre [(has-handlers? webserver-context)
-  ;       (string? war)
-  ;       (string? path)]}
   (let [handler (doto (WebAppContext.)
                   (.setContextPath path)
                   (.setWar war))]
@@ -449,10 +400,7 @@
    target ; TODO :-
    path :- schema/Str
    options :- ProxyOptions]
-  {:pre [;(has-handlers? webserver-context)
-          (proxy-target? target)
-          ;(string? path)
-          ]}
+  {:pre [(proxy-target? target)]}
   (let [target (update-in target [:path] remove-leading-slash)]
     (add-servlet-handler webserver-context
                          (proxy-servlet webserver-context target options)
@@ -506,12 +454,6 @@
    a java.lang.IllegalStateException will be thrown."
   [webserver-context :- WebserverServiceContext
    overrides :- config/WebserverServiceRawConfig]
-  ;{:pre  [;(has-state? webserver-context)
-  ;        ;(map? overrides)
-  ;         ]
-  ; :post [(map? %)]}
-
-
   ; Might be worth considering an implementation that only fails if the caller
   ; is trying to override a specific option that has been overridden already
   ; rather than blindly failing if an attempt is made to override any option.
