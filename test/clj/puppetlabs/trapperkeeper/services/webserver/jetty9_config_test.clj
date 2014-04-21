@@ -17,90 +17,105 @@
    :key-password    "Kq8lG9LkISky9cDIYysiadxRx"
    :trust-password  "Kq8lG9LkISky9cDIYysiadxRx"})
 
+(defn expected-http-config?
+  [config expected]
+  (= (-> expected
+         (update-in [:max-threads] (fnil identity default-max-threads)))
+     (process-config config)))
+
+(defn expected-https-config?
+  [config expected]
+  (let [actual (process-config config)]
+    (= (-> expected
+           (update-in [:max-threads] (fnil identity default-max-threads))
+           (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers))
+           (update-in [:https :protocols] (fnil identity default-protocols))
+           (update-in [:https :client-auth] (fnil identity default-client-auth)))
+       (-> actual
+           (update-in [:https] dissoc :keystore-config)))))
+
 (deftest process-config-test
   (testing "process-config successfully builds a WebserverServiceConfig for plaintext connector"
-    (are [config expected]
-      (= (-> expected
-             (update-in [:max-threads] (fnil identity default-max-threads)))
-         (process-config config))
+    (is (expected-http-config?
+          {:port 8000}
+          {:http {:host default-host :port 8000}}))
 
-      {:port 8000}
-      {:http {:host default-host :port 8000}}
+    (is (expected-http-config?
+          {:port 8000 :host "foo.local"}
+          {:http {:host "foo.local" :port 8000}}))
 
-      {:port 8000 :host "foo.local"}
-      {:http {:host "foo.local" :port 8000}}
+    (is (expected-http-config?
+          {:host "foo.local"}
+          {:http {:host "foo.local" :port default-http-port}}))
 
-      {:host "foo.local"}
-      {:http {:host "foo.local" :port default-http-port}}
-
-      {:port 8000 :max-threads 500}
-      {:http {:host default-host :port 8000}
-       :max-threads 500}))
+    (is (expected-http-config?
+          {:port 8000 :max-threads 500}
+          {:http        {:host default-host :port 8000}
+           :max-threads 500})))
 
   (testing "process-config successfully builds a WebserverServiceConfig for ssl connector"
-    (are [config expected]
-      (let [actual (process-config config)]
-        (= (-> expected
-               (update-in [:max-threads] (fnil identity default-max-threads))
-               (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers))
-               (update-in [:https :protocols] (fnil identity default-protocols))
-               (update-in [:https :client-auth] (fnil identity default-client-auth)))
-           (-> actual
-               (update-in [:https] dissoc :keystore-config))))
+    (is (expected-https-config?
+          (merge valid-ssl-pem-config
+                 {:ssl-host "foo.local"})
+          {:https {:host "foo.local" :port default-https-port}}))
 
-      (merge valid-ssl-pem-config {:ssl-host "foo.local"})
-      {:https {:host "foo.local" :port default-https-port}}
+    (is (expected-https-config?
+          (merge valid-ssl-pem-config
+                 {:ssl-port 8001})
+          {:https {:host default-host :port 8001}}))
 
-      (merge valid-ssl-pem-config {:ssl-port 8001})
-      {:https {:host default-host :port 8001}}
+    (is (expected-https-config?
+          (merge valid-ssl-pem-config
+                 {:ssl-host "foo.local" :ssl-port 8001})
+          {:https {:host "foo.local" :port 8001}}))
 
-      (merge valid-ssl-pem-config {:ssl-host "foo.local" :ssl-port 8001})
-      {:https {:host "foo.local" :port 8001}}
+    (is (expected-https-config?
+          (merge valid-ssl-keystore-config
+                 {:ssl-port 8001})
+          {:https {:host default-host :port 8001}}))
 
-      (merge valid-ssl-keystore-config {:ssl-port 8001})
-      {:https {:host default-host :port 8001}}
+    (is (expected-https-config?
+          (merge valid-ssl-pem-config
+                 {:ssl-port 8001 :cipher-suites ["FOO" "BAR"]})
+          {:https {:host default-host :port 8001 :cipher-suites ["FOO" "BAR"]}}))
 
-      (merge valid-ssl-pem-config {:ssl-port 8001 :cipher-suites ["FOO" "BAR"]})
-      {:https {:host default-host :port 8001 :cipher-suites ["FOO" "BAR"]}}
+    (is (expected-https-config?
+          (merge valid-ssl-pem-config
+                 {:ssl-port 8001 :ssl-protocols ["FOO" "BAR"]})
+          {:https {:host default-host :port 8001 :protocols ["FOO" "BAR"]}}))
 
-      (merge valid-ssl-pem-config {:ssl-port 8001 :ssl-protocols ["FOO" "BAR"]})
-      {:https {:host default-host :port 8001 :protocols ["FOO" "BAR"]}}
-
-      (merge valid-ssl-pem-config {:ssl-port 8001 :client-auth "want"})
-      {:https {:host default-host :port 8001 :client-auth :want}}))
+    (is (expected-https-config?
+          (merge valid-ssl-pem-config
+                 {:ssl-port 8001 :client-auth "want"})
+          {:https {:host default-host :port 8001 :client-auth :want}})))
 
   (testing "process-config successfully builds a WebserverServiceConfig for plaintext+ssl"
-    (are [config expected]
-      (let [actual (process-config config)]
-        (= (-> expected
-               (update-in [:max-threads] (fnil identity default-max-threads))
-               (update-in [:https :cipher-suites] (fnil identity acceptable-ciphers))
-               (update-in [:https :protocols] (fnil identity default-protocols))
-               (update-in [:https :client-auth] (fnil identity default-client-auth)))
-           (-> actual
-               (update-in [:https] dissoc :keystore-config))))
+    (is (expected-https-config?
+          (merge valid-ssl-pem-config
+                 {:ssl-host "foo.local" :port 8000})
+          {:http  {:host default-host :port 8000}
+           :https {:host "foo.local" :port default-https-port}})))
 
-      (merge valid-ssl-pem-config {:ssl-host "foo.local" :port 8000})
-      {:http {:host default-host :port 8000}
-       :https {:host "foo.local" :port default-https-port}}))
-
+  ;; TODO: better checking of the exceptions here
   (testing "process-config fails for invalid server config"
     (are [config]
       (thrown? ExceptionInfo
                (process-config config))
-      {}
       {:port "foo"}
       {:port 8000 :badkey "hi"}
-      valid-ssl-pem-config))
+      ))
 
   (testing "process-config fails for incomplete ssl context config"
     (are [config]
       (thrown? IllegalArgumentException
                (process-config config))
+      {}
       {:ssl-port 8001}
       {:ssl-port 8001 :ssl-host "foo.local"}
-      {:ssl-host "foo.local"})))
+      {:ssl-host "foo.local"}
+      valid-ssl-pem-config)))
 
+;; TODO: revisit all of these tests
 (deftest http-configuration
   (testing "configure-web-server should set client-auth to a value of :need
             if not specified in options"
