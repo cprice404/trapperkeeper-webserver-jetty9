@@ -81,7 +81,6 @@
   [webserver-context]
   (and
     (map? webserver-context)
-    (instance? HandlerCollection (:handler-collection webserver-context))
     (instance? ContextHandlerCollection (:handlers webserver-context))))
 
 ; TODO :-
@@ -307,11 +306,14 @@
          (has-state? webserver-context)
          (has-handlers? webserver-context)]
    :post [(has-webserver? %)]}
-  (let [config (config/process-config
-                    (merge-webserver-overrides-with-options options
-                                                            webserver-context))
-        ^Server s (create-server webserver-context config)]
-    (.setHandler s (gzip-handler (:handler-collection webserver-context)))
+    (let [config                (config/process-config
+                                  (merge-webserver-overrides-with-options
+                                    options
+                                    webserver-context))
+          ^Server s             (create-server webserver-context config)
+          ^HandlerCollection hc (HandlerCollection.)]
+    (.setHandlers hc (into-array Handler [(:handlers webserver-context)]))
+    (.setHandler s (gzip-handler hc))
     (assoc webserver-context :server s)))
 
 ; TODO :-
@@ -321,11 +323,8 @@
   before the webserver is started."
   []
   {:post [(has-handlers? %)]}
-  (let [^ContextHandlerCollection chc (ContextHandlerCollection.)
-        ^HandlerCollection hc         (HandlerCollection.)]
-    (.setHandlers hc (into-array Handler [chc]))
-    {:handler-collection hc
-     :handlers chc
+  (let [^ContextHandlerCollection chc (ContextHandlerCollection.)]
+    {:handlers chc
      :state (atom {})}))
 
 ; TODO :-
