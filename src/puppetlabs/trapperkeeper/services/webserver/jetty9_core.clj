@@ -1,9 +1,4 @@
-;; NOTE: this code is an adaptation of ring-jetty-handler.
-;;  It adds some SSL utility functions, and
-;;  provides the ability to dynamically register ring handlers.
-
 (ns puppetlabs.trapperkeeper.services.webserver.jetty9-core
-  "Adapter for the Jetty webserver."
   (:import (org.eclipse.jetty.server Handler Server Request ServerConnector
                                      HttpConfiguration HttpConnectionFactory
                                      ConnectionFactory)
@@ -47,25 +42,6 @@
     (catch ClassNotFoundException e)
     (catch Throwable e
       (log/error e "Could not remove security providers; HTTPS may not work!"))))
-
-;; Due to weird issues between JSSE and OpenSSL clients on some 1.7
-;; jdks when using Diffie-Hellman exchange, we need to only enable
-;; RSA-based ciphers.
-;;
-;; https://forums.oracle.com/forums/thread.jspa?messageID=10999587
-;; https://issues.apache.org/jira/browse/APLO-287
-;;
-;; This also applies to all JDK's with regards to EC algorithms causing
-;; issues.
-;;
-#_(def acceptable-ciphers
-  ["TLS_RSA_WITH_AES_256_CBC_SHA256"
-   "TLS_RSA_WITH_AES_256_CBC_SHA"
-   "TLS_RSA_WITH_AES_128_CBC_SHA256"
-   "TLS_RSA_WITH_AES_128_CBC_SHA"
-   "SSL_RSA_WITH_RC4_128_SHA"
-   "SSL_RSA_WITH_3DES_EDE_CBC_SHA"
-   "SSL_RSA_WITH_RC4_128_MD5"])
 
 (defn- remove-leading-slash
   [s]
@@ -147,22 +123,6 @@
       :need (.setNeedClientAuth context true)
       :want (.setWantClientAuth context true)
       nil)
-    context)
-  #_(let [context (SslContextFactory.)]
-    (if (string? (#spy/d options :keystore))
-      (.setKeyStorePath context (options :keystore))
-      (.setKeyStore context (options :keystore)))
-    (.setKeyStorePassword context (options :key-password))
-    (when (options :truststore)
-      (if (string? (options :truststore))
-        (.setTrustStorePath context (options :truststore))
-        (.setTrustStore context (options :truststore))))
-    (when (options :trust-password)
-      (.setTrustStorePassword context (options :trust-password)))
-    (case (options :client-auth)
-      :need (.setNeedClientAuth context true)
-      :want (.setWantClientAuth context true)
-      nil)
     context))
 
 (defn- connection-factory
@@ -226,9 +186,9 @@
          (proxy-options? options)]}
   (let [custom-ssl-ctxt-factory (when (map? (:ssl-config options))
                                   (-> (:ssl-config options)
+                                      ; TODO: fix this
                                       config/maybe-get-pem-config!
                                       config/pem-ssl-config->keystore-ssl-config
-                                      ;jetty-config/configure-web-server-ssl-from-pems
                                       (ssl-context-factory :none)))]
     (proxy [ProxyServlet] []
       (rewriteURI [req]
@@ -264,18 +224,10 @@
       (let [connector (plaintext-connector server (:http config))]
         (.addConnector server connector)))
     (when-let [https (:https config)]
-      (let [;ssl-host          (options :ssl-host (options :host "localhost"))
-            ;options           (assoc options :host ssl-host)
-             ssl-ctxt-factory (ssl-context-factory
-                                (:keystore-config https)
-                                (:client-auth https))
-             connector (ssl-connector server ssl-ctxt-factory https)
-        ;ciphers           (if-let [txt (https :cipher-suites)]
-        ;                    (map str/trim (str/split txt #","))
-        ;                    acceptable-ciphers)
-        ;protocols         (if-let [txt (options :ssl-protocols)]
-        ;                    (map str/trim (str/split txt #","))
-        ]
+      (let [ssl-ctxt-factory (ssl-context-factory
+                               (:keystore-config https)
+                               (:client-auth https))
+            connector (ssl-connector server ssl-ctxt-factory https)]
         (when-let [ciphers (:cipher-suites https)]
           (.setIncludeCipherSuites ssl-ctxt-factory (into-array ciphers)))
         (when-let [protocols (:protocols https)]
@@ -298,34 +250,43 @@
       (log/info (str "webserver config overridden for key '" (name key) "'")))
     (merge options overrides)))
 
-;; Functions for trapperkeeper 'webserver' interface
-
 (sm/defn ^:always-validate
   create-webserver ;:- TODO WebserverContext
-    ;"Create a Jetty webserver according to the supplied options:
-    ;
-    ;:port         - the port to listen on (defaults to 8080)
-    ;:host         - the hostname to listen on
-    ;:ssl-port     - the SSL port to listen on (defaults to 443, implies :ssl?)
-    ;:keystore     - the keystore to use for SSL connections
-    ;:key-password - the password to the keystore
-    ;:truststore   - a truststore to use for SSL connections
-    ;:trust-password - the password to the truststore
-    ;:max-threads  - the maximum number of threads to use (default 50)
-    ;:client-auth  - SSL client certificate authenticate, may be set to :need,
-    ;                :want or :none (defaults to :none)
-    ;
-    ;ws is a map containing the :handlers collection which should have been previously
-    ;created by create-handlers."
+    "Create a Jetty webserver according to the supplied options:
+
+    :host         - the hostname to listen on
+    :port         - the port to listen on (defaults to 8080)
+    :ssl-host     - the hostname to listen on for SSL connections
+    :ssl-port     - the SSL port to listen on (defaults to 8081)
+    :max-threads  - the maximum number of threads to use (default 100)
+
+    SSL may be configured via PEM files by providing all three of the following
+    settings:
+
+    :ssl-key      - a PEM file containing the host's private key
+    :ssl-cert     - a PEM file containing the host's certificate
+    :ssl-ca-cert  - a PEM file containing the CA certificate
+
+    or via JKS keystore files by providing all four of the following settings:
+
+    :keystore       - the keystore to use for SSL connections
+    :key-password   - the password to the keystore
+    :truststore     - a truststore to use for SSL connections
+    :trust-password - the password to the truststore
+
+    Other SSL settings:
+
+    :client-auth   - SSL client certificate authenticate, may be set to :need,
+                     :want or :none (defaults to :need)
+    :cipher-suites - list of cryptographic ciphers to allow for incoming SSL connections
+    :ssl-protocols - list of protocols to allow for incoming SSL connections"
   [options :- config/WebserverServiceRawConfig
    webserver-context]
   {:pre [(map? options)
          (has-state? webserver-context)
          (has-handlers? webserver-context)]
    :post [(has-webserver? %)]}
-  (let [
-         ;options   (jetty-config/configure-web-server
-         config (config/process-config
+  (let [config (config/process-config
                     (merge-webserver-overrides-with-options options
                                                             webserver-context))
         ^Server s (create-server webserver-context config)]
