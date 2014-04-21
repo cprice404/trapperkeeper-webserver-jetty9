@@ -45,7 +45,7 @@
    (schema/optional-key :trust-password)  schema/Str
    (schema/optional-key :cipher-suites)   [schema/Str]
    (schema/optional-key :ssl-protocols)   [schema/Str]
-   (schema/optional-key :client-auth)     (schema/enum "need" "want" "none")})
+   (schema/optional-key :client-auth)     schema/Str})
 
 (def WebserverSslPemConfig
   {:key      schema/Str
@@ -153,6 +153,19 @@
     (get-jks-keystore-config! config)))
 
 (sm/defn ^:always-validate
+  get-client-auth! :- WebserverSslClientAuth
+  [config :- WebserverServiceRawConfig]
+  (let [client-auth (:client-auth config)]
+    (cond
+      (nil? client-auth) :need
+      (contains? #{"need" "want" "none"} client-auth) (keyword client-auth)
+      :else (throw
+              (IllegalArgumentException.
+                (format
+                  "Unexpected value found for client auth config option: %s.  Expected need, want, or none."
+                  client-auth))))))
+
+(sm/defn ^:always-validate
   maybe-get-http-connector :- (schema/maybe WebserverConnector)
   [config :- WebserverServiceRawConfig]
   (if (some #(contains? config %) #{:port :host})
@@ -168,7 +181,7 @@
      :keystore-config (get-keystore-config! config)
      :cipher-suites (or (:cipher-suites config) acceptable-ciphers)
      :protocols (:ssl-protocols config)
-     :client-auth (or (keyword (:client-auth config)) default-client-auth)}))
+     :client-auth (get-client-auth! config)}))
 
 (sm/defn ^:always-validate
   maybe-add-http-connector :- {(schema/optional-key :http) WebserverConnector
