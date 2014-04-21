@@ -24,7 +24,7 @@
   [[:ConfigService get-in-config]]
   (init [this context]
         (log/info "Initializing web server.")
-        (assoc context :jetty9-server (core/create-handlers)))
+        (assoc context :jetty9-server (core/initialize-context)))
 
   (start [this context]
          (let [config (or (get-in-config [:webserver])

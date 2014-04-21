@@ -20,7 +20,7 @@
   "
   [app port-var & body]
   `(let [srv#      (jetty9/start-webserver
-                     (jetty9/create-handlers)
+                     (jetty9/initialize-context)
                      {:port 0})
          _#        (jetty9/add-ring-handler srv# ~app "/")
          ~port-var (-> (:server srv#)

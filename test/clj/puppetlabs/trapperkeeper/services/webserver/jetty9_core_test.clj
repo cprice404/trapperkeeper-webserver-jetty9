@@ -9,7 +9,7 @@
 
 (deftest handlers
   (testing "create-handlers should allow for handlers to be added"
-    (let [webserver-context (jetty/create-handlers)
+    (let [webserver-context (jetty/initialize-context)
           handlers          (:handlers webserver-context)]
       (jetty/add-ring-handler webserver-context
                               (fn [req] {:status 200
