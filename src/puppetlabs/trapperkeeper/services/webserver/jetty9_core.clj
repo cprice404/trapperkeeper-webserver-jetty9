@@ -69,8 +69,7 @@
   [s]
   (str/replace s #"^\/" ""))
 
-; TODO :-
-(sm/defn ^:always-validate has-webserver? :- Boolean
+(sm/defn ^:always-validate started? :- Boolean
   "A predicate that indicates whether or not the webserver-context contains a Jetty
   Server object."
   [webserver-context :- WebserverServiceContext]
@@ -284,10 +283,10 @@
                      :want or :none (defaults to :need)
     :cipher-suites - list of cryptographic ciphers to allow for incoming SSL connections
     :ssl-protocols - list of protocols to allow for incoming SSL connections"
-  [options :- config/WebserverServiceRawConfig
-   webserver-context :- WebserverServiceContext]
+  [webserver-context :- WebserverServiceContext
+   options :- config/WebserverServiceRawConfig]
   {:pre  [(map? options)]
-   :post [(has-webserver? %)]}
+   :post [(started? %)]}
     (let [config                (config/process-config
                                   (merge-webserver-overrides-with-options
                                     options
@@ -298,7 +297,7 @@
     (.setHandler s (gzip-handler hc))
     (assoc webserver-context :server s)))
 
-; TODO :- , rename?
+; TODO rename?
 (sm/defn ^:always-validate
   create-handlers :- WebserverServiceContext
   "Create a webserver-context which contains a HandlerCollection and a
@@ -310,15 +309,16 @@
      :state (atom {})
      :server nil}))
 
-; TODO :-
-(defn start-webserver
+(sm/defn ^:always-validate start-webserver :- WebserverServiceContext
   "Starts a webserver that has been previously created and added to the
   webserver-context by `create-webserver`"
-  [webserver-context]
-  {:pre [(has-webserver? webserver-context)]}
-  (.start (:server webserver-context)))
+  [webserver-context :- WebserverServiceContext
+   config :- config/WebserverServiceRawConfig]
+  (let [webserver-context (create-webserver webserver-context config)]
+    (log/info "Starting web server.")
+    (.start (:server webserver-context))
+    webserver-context))
 
-; TODO :-
 (sm/defn ^:always-validate
   add-handler :- ContextHandler
   [webserver-context :- WebserverServiceContext
@@ -487,13 +487,13 @@
 ; TODO :-
 (defn join
   [webserver-context]
-  {:pre [(has-webserver? webserver-context)]}
+  {:pre [(started? webserver-context)]}
   (.join (:server webserver-context)))
 
 ; TODO :-
 (defn shutdown
   [webserver-context]
-  {:pre [(has-webserver? webserver-context)]}
+  {:pre [(started? webserver-context)]}
   (log/info "Shutting down web server.")
   (.stop (:server webserver-context)))
 

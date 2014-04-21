@@ -31,9 +31,7 @@
                           ;; Here for backward compatibility with existing projects
                           (get-in-config [:jetty])
                           {})
-               webserver (core/create-webserver config (:jetty9-server context))]
-           (log/info "Starting web server.")
-           (core/start-webserver webserver)
+               webserver (core/start-webserver (:jetty9-server context) config)]
            (assoc context :jetty9-server webserver)))
 
   (stop [this context]
