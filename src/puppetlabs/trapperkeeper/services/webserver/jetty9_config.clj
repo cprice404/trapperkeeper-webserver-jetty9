@@ -52,11 +52,14 @@
    :cert     schema/Str
    :ca-cert  schema/Str})
 
-(def WebserverKeystoreConfig
+(def WebserverSslKeystoreConfig
   {:keystore        KeyStore
    :key-password    schema/Str
    :truststore      KeyStore
    (schema/optional-key :trust-password) schema/Str})
+
+(def WebserverSslClientAuth
+  (schema/enum :need :want :none))
 
 (def WebserverConnector
   {:host schema/Str
@@ -65,10 +68,10 @@
 (def WebserverSslConnector
   {:host schema/Str
    :port schema/Int
-   :keystore-config WebserverKeystoreConfig
+   :keystore-config WebserverSslKeystoreConfig
    :cipher-suites [schema/Str]
    :protocols (schema/maybe [schema/Str])
-   :client-auth (schema/enum :need :want :auth)})
+   :client-auth WebserverSslClientAuth})
 
 (def HasConnector
   (schema/either
@@ -100,7 +103,7 @@
                        (keys pem-config) pem-required-keys))))))
 
 (sm/defn ^:always-validate
-  pem-ssl-config->keystore-ssl-config :- WebserverKeystoreConfig
+  pem-ssl-config->keystore-ssl-config :- WebserverSslKeystoreConfig
   [{:keys [ca-cert key cert]} :- WebserverSslPemConfig]
   (let [key-password (uuid)]
     {:truststore    (-> (ssl/keystore)
@@ -121,7 +124,7 @@
                         (keys keystore-ssl-config))))))
 
 (sm/defn ^:always-validate
-  get-jks-keystore-config! :- WebserverKeystoreConfig
+  get-jks-keystore-config! :- WebserverSslKeystoreConfig
   [{:keys [truststore keystore key-password trust-password]}
       :- WebserverServiceRawConfig]
   (when (some nil? [truststore keystore key-password trust-password])
@@ -141,7 +144,7 @@
       result)))
 
 (sm/defn ^:always-validate
-  get-keystore-config! :- WebserverKeystoreConfig
+  get-keystore-config! :- WebserverSslKeystoreConfig
   [config :- WebserverServiceRawConfig]
   (if-let [pem-config (maybe-get-pem-config! config)]
     (do
@@ -189,15 +192,19 @@
 (sm/defn ^:always-validate
   process-config :- WebserverServiceConfig
   [config :- WebserverServiceRawConfig]
-  (-> {}
-      (maybe-add-http-connector config)
-      (maybe-add-https-connector config)
-      (assoc :max-threads (get config :max-threads default-max-threads))))
+  (let [result (-> {}
+                   (maybe-add-http-connector config)
+                   (maybe-add-https-connector config)
+                   (assoc :max-threads (get config :max-threads default-max-threads)))]
+    (when-not (some #(contains? result %) [:http :https])
+      (throw (IllegalArgumentException.
+               "Either host, port, ssl-host, or ssl-port must be specified on the config in order for the server to be started")))
+    result))
 
 
 
 
-(defn configure-web-server-ssl-from-pems
+#_(defn configure-web-server-ssl-from-pems
   "Configures the web server's SSL settings based on PEM files, rather than
   via a java keystore (jks) file.  The configuration map returned by this function
   will have overwritten any existing keystore-related settings to use in-memory
@@ -230,7 +237,7 @@
       (assoc :key-password keystore-pw)
       (assoc :truststore truststore))))
 
-(defn configure-web-server
+#_(defn configure-web-server
   "Update the supplied config map with information about the HTTP webserver to
   start. This will specify client auth."
   [options]

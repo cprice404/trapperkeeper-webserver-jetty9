@@ -116,7 +116,7 @@
       valid-ssl-pem-config)))
 
 ;; TODO: revisit all of these tests
-(deftest http-configuration
+#_(deftest http-configuration
   (testing "configure-web-server should set client-auth to a value of :need
             if not specified in options"
     (let [config (configure-web-server {:port 8080})]

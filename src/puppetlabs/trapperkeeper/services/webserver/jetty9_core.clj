@@ -28,8 +28,9 @@
             [clojure.string :as str]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
+            [schema.macros :as sm]
             [puppetlabs.kitchensink.core :as ks]
-            [puppetlabs.trapperkeeper.services.webserver.jetty9-config :as jetty-config]))
+            [puppetlabs.trapperkeeper.services.webserver.jetty9-config :as config]))
 
 ;; Work around an issue with OpenJDK's PKCS11 implementation preventing TLSv1
 ;; connections from working correctly
@@ -57,7 +58,7 @@
 ;; This also applies to all JDK's with regards to EC algorithms causing
 ;; issues.
 ;;
-(def acceptable-ciphers
+#_(def acceptable-ciphers
   ["TLS_RSA_WITH_AES_256_CBC_SHA256"
    "TLS_RSA_WITH_AES_256_CBC_SHA"
    "TLS_RSA_WITH_AES_128_CBC_SHA256"
@@ -131,11 +132,24 @@
           (servlet/update-servlet-response response response-map)
           (.setHandled base-request true))))))
 
-(defn- ssl-context-factory
+(sm/defn ^:always-validate
+  ssl-context-factory  ; :- TODO
   "Creates a new SslContextFactory instance from a map of options."
-  [options]
+  [config :- config/WebserverSslKeystoreConfig
+   client-auth :- config/WebserverSslClientAuth]
   (let [context (SslContextFactory.)]
-    (if (string? (options :keystore))
+    (.setKeyStore context (:keystore config))
+    (.setKeyStorePassword context (:key-password config))
+    (.setTrustStore context (:truststore config))
+    (when-let [trust-password (:trust-password config)]
+      (.setTrustStorePassword context trust-password))
+    (case client-auth
+      :need (.setNeedClientAuth context true)
+      :want (.setWantClientAuth context true)
+      nil)
+    context)
+  #_(let [context (SslContextFactory.)]
+    (if (string? (#spy/d options :keystore))
       (.setKeyStorePath context (options :keystore))
       (.setKeyStore context (options :keystore)))
     (.setKeyStorePassword context (options :key-password))
@@ -158,18 +172,23 @@
     (into-array ConnectionFactory
                 [(HttpConnectionFactory. http-config)])))
 
-(defn- ssl-connector
+(sm/defn ^:always-validate
+  ssl-connector  ; :- TODO
   "Creates a ssl ServerConnector instance."
-  [server ssl-ctxt-factory options]
+  [server            ; :- TODO
+   ssl-ctxt-factory  ; :- TODO
+   config :- config/WebserverSslConnector]
   (doto (ServerConnector. server ssl-ctxt-factory (connection-factory))
-    (.setPort (options :ssl-port 443))
-    (.setHost (options :host))))
+    (.setPort (:port config))
+    (.setHost (:host config))))
 
-(defn- plaintext-connector
-  [server options]
+(sm/defn ^:always-validate
+  plaintext-connector ; :- TODO
+  [server ; :- TODO
+   config :- config/WebserverConnector]
   (doto (ServerConnector. server (connection-factory))
-    (.setPort (options :port 80))
-    (.setHost (options :host "localhost"))))
+    (.setPort (:port config))
+    (.setHost (:host config))))
 
 ;; TODO: make all of this gzip-mime-type stuff configurable
 (defn- gzip-excluded-mime-types
@@ -200,15 +219,17 @@
 (defn- proxy-servlet
   "Create an instance of Jetty's `ProxyServlet` that will proxy requests at
   a given context to another host."
-  [webserver-context target path options]
+  [webserver-context target options]
   {:pre [(has-state? webserver-context)
          (has-handlers? webserver-context)
          (proxy-target? target)
          (proxy-options? options)]}
   (let [custom-ssl-ctxt-factory (when (map? (:ssl-config options))
                                   (-> (:ssl-config options)
-                                      jetty-config/configure-web-server-ssl-from-pems
-                                      ssl-context-factory))]
+                                      config/maybe-get-pem-config!
+                                      config/pem-ssl-config->keystore-ssl-config
+                                      ;jetty-config/configure-web-server-ssl-from-pems
+                                      (ssl-context-factory :none)))]
     (proxy [ProxyServlet] []
       (rewriteURI [req]
         (let [query (.getQueryString req)
@@ -233,27 +254,32 @@
             (HttpClient. ssl-ctxt-factory)
             (HttpClient.)))))))
 
-(defn- create-server
+(sm/defn ^:always-validate
+  create-server ; :- TODO
   "Construct a Jetty Server instance."
-  [webserver-context options]
-  (let [server (Server. (QueuedThreadPool. (options :max-threads)))]
-    (when (options :port)
-      (let [connector (plaintext-connector server options)]
+  [webserver-context ; :- TODO
+   config :- config/WebserverServiceConfig]
+  (let [server (Server. (QueuedThreadPool. (:max-threads config)))]
+    (when (:http config)
+      (let [connector (plaintext-connector server (:http config))]
         (.addConnector server connector)))
-    (when (or (options :ssl?) (options :ssl-port))
-      (let [ssl-host          (options :ssl-host (options :host "localhost"))
-            options           (assoc options :host ssl-host)
-            ssl-ctxt-factory  (ssl-context-factory options)
-            connector         (ssl-connector server ssl-ctxt-factory options)
-            ciphers           (if-let [txt (options :cipher-suites)]
-                                (map str/trim (str/split txt #","))
-                                acceptable-ciphers)
-            protocols         (if-let [txt (options :ssl-protocols)]
-                                (map str/trim (str/split txt #",")))]
-        (when ciphers
-          (.setIncludeCipherSuites ssl-ctxt-factory (into-array ciphers))
-          (when protocols
-            (.setIncludeProtocols ssl-ctxt-factory (into-array protocols))))
+    (when-let [https (:https config)]
+      (let [;ssl-host          (options :ssl-host (options :host "localhost"))
+            ;options           (assoc options :host ssl-host)
+             ssl-ctxt-factory (ssl-context-factory
+                                (:keystore-config https)
+                                (:client-auth https))
+             connector (ssl-connector server ssl-ctxt-factory https)
+        ;ciphers           (if-let [txt (https :cipher-suites)]
+        ;                    (map str/trim (str/split txt #","))
+        ;                    acceptable-ciphers)
+        ;protocols         (if-let [txt (options :ssl-protocols)]
+        ;                    (map str/trim (str/split txt #","))
+        ]
+        (when-let [ciphers (:cipher-suites https)]
+          (.setIncludeCipherSuites ssl-ctxt-factory (into-array ciphers)))
+        (when-let [protocols (:protocols https)]
+          (.setIncludeProtocols ssl-ctxt-factory (into-array protocols)))
         (.addConnector server connector)
         (swap! (:state webserver-context) assoc :ssl-context-factory ssl-ctxt-factory)))
     server))
@@ -274,14 +300,12 @@
 
 ;; Functions for trapperkeeper 'webserver' interface
 
-(defn create-webserver
+(sm/defn ^:always-validate
+  create-webserver ;:- TODO WebserverContext
     ;"Create a Jetty webserver according to the supplied options:
     ;
-    ;:configurator - a function called with the Jetty Server instance
     ;:port         - the port to listen on (defaults to 8080)
     ;:host         - the hostname to listen on
-    ;:join?        - blocks the thread until server ends (defaults to true)
-    ;:ssl?         - allow connections over HTTPS
     ;:ssl-port     - the SSL port to listen on (defaults to 443, implies :ssl?)
     ;:keystore     - the keystore to use for SSL connections
     ;:key-password - the password to the keystore
@@ -293,18 +317,19 @@
     ;
     ;ws is a map containing the :handlers collection which should have been previously
     ;created by create-handlers."
-  [options webserver-context]
+  [options :- config/WebserverServiceRawConfig
+   webserver-context]
   {:pre [(map? options)
          (has-state? webserver-context)
          (has-handlers? webserver-context)]
    :post [(has-webserver? %)]}
-  (let [options   (jetty-config/configure-web-server
+  (let [
+         ;options   (jetty-config/configure-web-server
+         config (config/process-config
                     (merge-webserver-overrides-with-options options
                                                             webserver-context))
-        ^Server s (create-server webserver-context (dissoc options :configurator))]
+        ^Server s (create-server webserver-context config)]
     (.setHandler s (gzip-handler (:handler-collection webserver-context)))
-    (when-let [configurator (:configurator options)]
-      (configurator s))
     (assoc webserver-context :server s)))
 
 (defn create-handlers
@@ -407,7 +432,7 @@
          (string? path)]}
   (let [target (update-in target [:path] remove-leading-slash)]
     (add-servlet-handler webserver-context
-                         (proxy-servlet webserver-context target path options)
+                         (proxy-servlet webserver-context target options)
                          path)))
 
 (defn override-webserver-settings!
