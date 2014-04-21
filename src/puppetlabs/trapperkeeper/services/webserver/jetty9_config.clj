@@ -48,9 +48,9 @@
    (schema/optional-key :client-auth)     schema/Str})
 
 (def WebserverSslPemConfig
-  {:key      schema/Str
-   :cert     schema/Str
-   :ca-cert  schema/Str})
+  {:ssl-key      schema/Str
+   :ssl-cert     schema/Str
+   :ssl-ca-cert  schema/Str})
 
 (def WebserverSslKeystoreConfig
   {:keystore        KeyStore
@@ -94,9 +94,7 @@
   (let [pem-required-keys [:ssl-key :ssl-cert :ssl-ca-cert]
         pem-config (select-keys config pem-required-keys)]
     (condp = (count pem-config)
-      3 {:cert    (:ssl-cert pem-config)
-         :key     (:ssl-key pem-config)
-         :ca-cert (:ssl-ca-cert pem-config)}
+      3 pem-config
       0 nil
       (throw (IllegalArgumentException.
                (format "Found SSL config options: %s; If configuring SSL from PEM files, you must provide all of the following options: %s"
@@ -104,15 +102,15 @@
 
 (sm/defn ^:always-validate
   pem-ssl-config->keystore-ssl-config :- WebserverSslKeystoreConfig
-  [{:keys [ca-cert key cert]} :- WebserverSslPemConfig]
+  [{:keys [ssl-ca-cert ssl-key ssl-cert]} :- WebserverSslPemConfig]
   (let [key-password (uuid)]
     {:truststore    (-> (ssl/keystore)
                         (ssl/assoc-certs-from-file!
-                          "CA Certificate" ca-cert))
+                          "CA Certificate" ssl-ca-cert))
      :key-password  key-password
      :keystore      (-> (ssl/keystore)
                         (ssl/assoc-private-key-file!
-                          "Private Key" key key-password cert))}))
+                          "Private Key" ssl-key key-password ssl-cert))}))
 
 (sm/defn ^:always-validate
   warn-if-keystore-ssl-configs-found!

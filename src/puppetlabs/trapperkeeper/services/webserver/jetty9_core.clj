@@ -25,7 +25,11 @@
             [clojure.tools.logging :as log]
             [schema.macros :as sm]
             [puppetlabs.kitchensink.core :as ks]
-            [puppetlabs.trapperkeeper.services.webserver.jetty9-config :as config]))
+            [puppetlabs.trapperkeeper.services.webserver.jetty9-config :as config]
+            [schema.core :as schema]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; JDK SecurityProvider Hack
 
 ;; Work around an issue with OpenJDK's PKCS11 implementation preventing TLSv1
 ;; connections from working correctly
@@ -43,10 +47,23 @@
     (catch Throwable e
       (log/error e "Could not remove security providers; HTTPS may not work!"))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Schemas
+
+(def ProxyOptions
+  {(schema/optional-key :scheme) (schema/enum :orig :http :https)
+   (schema/optional-key :ssl-config) (schema/either
+                                       (schema/eq :use-server-config)
+                                       config/WebserverSslPemConfig)})
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Utility Functions
+
 (defn- remove-leading-slash
   [s]
   (str/replace s #"^\/" ""))
 
+; TODO :-
 (defn has-state?
   "A predicate that indicates whether or not the webserver-context contains a
   ':state' map, used for capturing any configuration settings that can be
@@ -57,6 +74,7 @@
     (contains? webserver-context :state)
     (map? @(:state webserver-context))))
 
+; TODO :-
 (defn has-handlers?
   "A predicate that indicates whether or not the webserver-context contains a
   ContextHandlerCollection which can have handlers attached to it."
@@ -66,6 +84,7 @@
     (instance? HandlerCollection (:handler-collection webserver-context))
     (instance? ContextHandlerCollection (:handlers webserver-context))))
 
+; TODO :-
 (defn has-webserver?
   "A predicate that indicates whether or not the webserver-context contains a Jetty
   Server object."
@@ -74,6 +93,7 @@
     (has-handlers? webserver-context)
     (instance? Server (:server webserver-context))))
 
+; TODO :-
 (defn proxy-target?
   "A predicate that validates the format of a proxy target configuration map"
   [target]
@@ -86,17 +106,6 @@
     (> (:port target) 0)
     (<= (:port target) 65535)))
 
-(defn proxy-options?
-  "A predicate that validates the format of a proxy options configuration map"
-  [options]
-  ;; TODO: should probably be using prismatic schema here (PE-3409)
-  (and
-    (empty? (set/difference (ks/keyset options) #{:scheme :ssl-config}))
-    (contains? #{nil :orig :http :https} (:scheme options))
-    ((some-fn nil? map? #(= :use-server-config %)) (:ssl-config options))
-    (or (not (map? (:ssl-config options)))
-        (= #{:ssl-ca-cert :ssl-cert :ssl-key} (ks/keyset (:ssl-config options))))))
-
 (defn- ring-handler
   "Returns an Jetty Handler implementation for the given Ring handler."
   [handler]
@@ -108,6 +117,7 @@
           (servlet/update-servlet-response response response-map)
           (.setHandled base-request true))))))
 
+; TODO: move
 (sm/defn ^:always-validate
   ssl-context-factory  ; :- TODO
   "Creates a new SslContextFactory instance from a map of options."
@@ -124,6 +134,14 @@
       :want (.setWantClientAuth context true)
       nil)
     context))
+
+; TODO move to a better section of the file
+(sm/defn ^:always-validate
+  get-proxy-client-context-factory :- SslContextFactory
+  [ssl-config :- config/WebserverSslPemConfig]
+  (-> ssl-config
+      config/pem-ssl-config->keystore-ssl-config
+      (ssl-context-factory :none)))
 
 (defn- connection-factory
   []
@@ -176,20 +194,19 @@
     (.setMimeTypes (gzip-excluded-mime-types))
     (.setExcludeMimeTypes true)))
 
-(defn- proxy-servlet
+; TODO :-
+(sm/defn ^:always-validate
+  proxy-servlet :- ProxyServlet
   "Create an instance of Jetty's `ProxyServlet` that will proxy requests at
   a given context to another host."
-  [webserver-context target options]
+  [webserver-context ; TODO :-
+   target ; TODO :-
+   options :- ProxyOptions]
   {:pre [(has-state? webserver-context)
          (has-handlers? webserver-context)
-         (proxy-target? target)
-         (proxy-options? options)]}
+         (proxy-target? target)]}
   (let [custom-ssl-ctxt-factory (when (map? (:ssl-config options))
-                                  (-> (:ssl-config options)
-                                      ; TODO: fix this
-                                      config/maybe-get-pem-config!
-                                      config/pem-ssl-config->keystore-ssl-config
-                                      (ssl-context-factory :none)))]
+                                  (get-proxy-client-context-factory (:ssl-config options)))]
     (proxy [ProxyServlet] []
       (rewriteURI [req]
         (let [query (.getQueryString req)
@@ -214,6 +231,9 @@
             (HttpClient. ssl-ctxt-factory)
             (HttpClient.)))))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Public
+
 (sm/defn ^:always-validate
   create-server ; :- TODO
   "Construct a Jetty Server instance."
@@ -236,6 +256,7 @@
         (swap! (:state webserver-context) assoc :ssl-context-factory ssl-ctxt-factory)))
     server))
 
+; TODO :- and move out of public
 (defn- merge-webserver-overrides-with-options
   "Merge any overrides made to the webserver config settings with the supplied
    options."
@@ -293,6 +314,7 @@
     (.setHandler s (gzip-handler (:handler-collection webserver-context)))
     (assoc webserver-context :server s)))
 
+; TODO :-
 (defn create-handlers
   "Create a webserver-context which contains a HandlerCollection and a
   ContextHandlerCollection which can accept the addition of new handlers
@@ -306,6 +328,7 @@
      :handlers chc
      :state (atom {})}))
 
+; TODO :-
 (defn start-webserver
   "Starts a webserver that has been previously created and added to the
   webserver-context by `create-webserver`"
@@ -313,6 +336,7 @@
   {:pre [(has-webserver? webserver-context)]}
   (.start (:server webserver-context)))
 
+; TODO :-
 (defn add-handler
   [webserver-context handler]
   {:pre [(has-handlers? webserver-context)
@@ -320,6 +344,7 @@
   (.addHandler (:handlers webserver-context) handler)
   handler)
 
+; TODO :-
 (defn add-context-handler
   "Add a static content context handler (allow for customization of the context handler through javax.servlet.ServletContextListener implementations)"
   ([webserver-context base-path context-path]
@@ -339,6 +364,7 @@
      (.addServlet handler (ServletHolder. (DefaultServlet.)) "/")
      (add-handler webserver-context handler))))
 
+; TODO :-
 (defn add-ring-handler
   [webserver-context handler path]
   {:pre [(has-handlers? webserver-context)
@@ -348,6 +374,7 @@
                        (.setHandler (ring-handler handler)))]
     (add-handler webserver-context ctxt-handler)))
 
+; TODO :-
 (defn add-servlet-handler
   ([webserver-context servlet path]
    (add-servlet-handler webserver-context servlet path {}))
@@ -363,6 +390,7 @@
                     (.addServlet holder "/*"))]
      (add-handler webserver-context handler))))
 
+; TODO :-
 (defn add-war-handler
   "Registers a WAR to Jetty. It takes two arguments: `[war path]`.
   - `war` is the file path or the URL to a WAR file
@@ -376,7 +404,9 @@
                   (.setWar war))]
     (add-handler webserver-context handler)))
 
-(defn add-proxy-route
+; TODO :-
+(sm/defn ^:always-validate
+  add-proxy-route
   "Configures the Jetty server to proxy a given URL path to another host.
 
   `target` should be a map containing the keys :host, :port, and :path; where
@@ -386,16 +416,19 @@
   and :ssl-config (value may be :use-server-config or a map containing :ssl-ca-cert,
   :ssl-cert, and :ssl-key).
   "
-  [webserver-context target path options]
+  [webserver-context ; TODO :-
+   target ; TODO :-
+   path ; TODO :-
+   options :- ProxyOptions]
   {:pre [(has-handlers? webserver-context)
          (proxy-target? target)
-         (proxy-options? options)
          (string? path)]}
   (let [target (update-in target [:path] remove-leading-slash)]
     (add-servlet-handler webserver-context
                          (proxy-servlet webserver-context target options)
                          path)))
 
+; TODO :-
 (defn override-webserver-settings!
   "Override the settings in the webserver section of the service's config file
    with the set of options in the supplied overrides map.
@@ -474,11 +507,13 @@
                    (str "overrides cannot be set because they have "
                         "already been set")))))))
 
+; TODO :-
 (defn join
   [webserver-context]
   {:pre [(has-webserver? webserver-context)]}
   (.join (:server webserver-context)))
 
+; TODO :-
 (defn shutdown
   [webserver-context]
   {:pre [(has-webserver? webserver-context)]}
