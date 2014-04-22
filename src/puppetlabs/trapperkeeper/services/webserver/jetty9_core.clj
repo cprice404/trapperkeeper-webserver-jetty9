@@ -80,18 +80,24 @@
   [webserver-context :- WebserverServiceContext]
   (instance? Server (:server webserver-context)))
 
-(defn- ring-handler
-  "Returns an Jetty Handler implementation for the given Ring handler."
-  [handler]
-  (proxy [AbstractHandler] []
-    (handle [_ ^Request base-request request response]
-      (let [request-map  (servlet/build-request-map request)
-            response-map (handler request-map)]
-        (when response-map
-          (servlet/update-servlet-response response response-map)
-          (.setHandled base-request true))))))
+(sm/defn ^:always-validate
+  merge-webserver-overrides-with-options :- config/WebserverServiceRawConfig
+  "Merge any overrides made to the webserver config settings with the supplied
+   options."
+  [webserver-context :- WebserverServiceContext
+   options :- config/WebserverServiceRawConfig]
+  {:post [(map? %)]}
+  (let [overrides (:overrides (swap! (:state webserver-context)
+                                     assoc
+                                     :overrides-read-by-webserver
+                                     true))]
+    (doseq [key (keys overrides)]
+      (log/info (str "webserver config overridden for key '" (name key) "'")))
+    (merge options overrides)))
 
-; TODO: move
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; SSL Context Functions
+
 (sm/defn ^:always-validate
   ssl-context-factory :- SslContextFactory
   "Creates a new SslContextFactory instance from a map of options."
@@ -109,13 +115,15 @@
       nil)
     context))
 
-; TODO move to a better section of the file
 (sm/defn ^:always-validate
   get-proxy-client-context-factory :- SslContextFactory
   [ssl-config :- config/WebserverSslPemConfig]
   (-> ssl-config
       config/pem-ssl-config->keystore-ssl-config
       (ssl-context-factory :none)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Jetty Server / Connector Functions
 
 (defn- connection-factory
   []
@@ -142,6 +150,31 @@
     (.setPort (:port config))
     (.setHost (:host config))))
 
+(sm/defn ^:always-validate
+  create-server :- Server
+  "Construct a Jetty Server instance."
+  [webserver-context :- WebserverServiceContext
+   config :- config/WebserverServiceConfig]
+  (let [server (Server. (QueuedThreadPool. (:max-threads config)))]
+    (when (:http config)
+      (let [connector (plaintext-connector server (:http config))]
+        (.addConnector server connector)))
+    (when-let [https (:https config)]
+      (let [ssl-ctxt-factory (ssl-context-factory
+                               (:keystore-config https)
+                               (:client-auth https))
+            connector (ssl-connector server ssl-ctxt-factory https)]
+        (when-let [ciphers (:cipher-suites https)]
+          (.setIncludeCipherSuites ssl-ctxt-factory (into-array ciphers)))
+        (when-let [protocols (:protocols https)]
+          (.setIncludeProtocols ssl-ctxt-factory (into-array protocols)))
+        (.addConnector server connector)
+        (swap! (:state webserver-context) assoc :ssl-context-factory ssl-ctxt-factory)))
+    server))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; GZip Functions
+
 ;; TODO: make all of this gzip-mime-type stuff configurable
 (defn- gzip-excluded-mime-types
   "Build up a list of mime types that should not be candidates for
@@ -167,6 +200,27 @@
     (.setHandler handler)
     (.setMimeTypes (gzip-excluded-mime-types))
     (.setExcludeMimeTypes true)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Handler Helper Functions
+
+(sm/defn ^:always-validate
+  add-handler :- ContextHandler
+  [webserver-context :- WebserverServiceContext
+   handler :- ContextHandler]
+  (.addHandler (:handlers webserver-context) handler)
+  handler)
+
+(defn- ring-handler
+  "Returns an Jetty Handler implementation for the given Ring handler."
+  [handler]
+  (proxy [AbstractHandler] []
+    (handle [_ ^Request base-request request response]
+      (let [request-map  (servlet/build-request-map request)
+            response-map (handler request-map)]
+        (when response-map
+          (servlet/update-servlet-response response response-map)
+          (.setHandled base-request true))))))
 
 (sm/defn ^:always-validate
   proxy-servlet :- ProxyServlet
@@ -205,42 +259,15 @@
 ;;; Public
 
 (sm/defn ^:always-validate
-  create-server :- Server
-  "Construct a Jetty Server instance."
-  [webserver-context :- WebserverServiceContext
-   config :- config/WebserverServiceConfig]
-  (let [server (Server. (QueuedThreadPool. (:max-threads config)))]
-    (when (:http config)
-      (let [connector (plaintext-connector server (:http config))]
-        (.addConnector server connector)))
-    (when-let [https (:https config)]
-      (let [ssl-ctxt-factory (ssl-context-factory
-                               (:keystore-config https)
-                               (:client-auth https))
-            connector (ssl-connector server ssl-ctxt-factory https)]
-        (when-let [ciphers (:cipher-suites https)]
-          (.setIncludeCipherSuites ssl-ctxt-factory (into-array ciphers)))
-        (when-let [protocols (:protocols https)]
-          (.setIncludeProtocols ssl-ctxt-factory (into-array protocols)))
-        (.addConnector server connector)
-        (swap! (:state webserver-context) assoc :ssl-context-factory ssl-ctxt-factory)))
-    server))
-
-; TODO move out of public
-(sm/defn ^:always-validate
-  merge-webserver-overrides-with-options :- config/WebserverServiceRawConfig
-  "Merge any overrides made to the webserver config settings with the supplied
-   options."
-  [webserver-context :- WebserverServiceContext
-   options :- config/WebserverServiceRawConfig]
-  {:post [(map? %)]}
-  (let [overrides (:overrides (swap! (:state webserver-context)
-                                     assoc
-                                     :overrides-read-by-webserver
-                                     true))]
-    (doseq [key (keys overrides)]
-      (log/info (str "webserver config overridden for key '" (name key) "'")))
-    (merge options overrides)))
+  initialize-context :- WebserverServiceContext
+  "Create a webserver-context which contains a HandlerCollection and a
+  ContextHandlerCollection which can accept the addition of new handlers
+  before the webserver is started."
+  []
+  (let [^ContextHandlerCollection chc (ContextHandlerCollection.)]
+    {:handlers chc
+     :state (atom {})
+     :server nil}))
 
 (sm/defn ^:always-validate
   create-webserver :- WebserverServiceContext
@@ -286,17 +313,6 @@
     (.setHandler s (gzip-handler hc))
     (assoc webserver-context :server s)))
 
-(sm/defn ^:always-validate
-  initialize-context :- WebserverServiceContext
-  "Create a webserver-context which contains a HandlerCollection and a
-  ContextHandlerCollection which can accept the addition of new handlers
-  before the webserver is started."
-  []
-  (let [^ContextHandlerCollection chc (ContextHandlerCollection.)]
-    {:handlers chc
-     :state (atom {})
-     :server nil}))
-
 (sm/defn ^:always-validate start-webserver :- WebserverServiceContext
   "Starts a webserver that has been previously created and added to the
   webserver-context by `create-webserver`"
@@ -306,13 +322,6 @@
     (log/info "Starting web server.")
     (.start (:server webserver-context))
     webserver-context))
-
-(sm/defn ^:always-validate
-  add-handler :- ContextHandler
-  [webserver-context :- WebserverServiceContext
-   handler :- ContextHandler]
-  (.addHandler (:handlers webserver-context) handler)
-  handler)
 
 (sm/defn ^:always-validate
   add-context-handler :- ContextHandler
