@@ -3,7 +3,7 @@
     (org.eclipse.jetty.server.handler ContextHandler ContextHandlerCollection))
   (:require [clojure.test :refer :all]
             [ring.util.response :as rr]
-            [puppetlabs.http.client.sync :as http-client]
+            [puppetlabs.trapperkeeper.testutils.webserver.common :refer :all]
             [puppetlabs.trapperkeeper.services.webserver.jetty9-core :as jetty]
             [puppetlabs.trapperkeeper.testutils.webserver :refer [with-test-webserver]]))
 
@@ -29,14 +29,15 @@
       (with-test-webserver app port
         (testing "a gzipped response when requests"
           ;; The client/get function asks for compression by default
-          (let [resp (http-client/get (format "http://localhost:%d/" port))]
+          (let [resp (http-get (format "http://localhost:%d/" port))]
+            (println "Got response:" resp)
             (is (= (resp :body) body))
-            (is (= (get-in resp [:headers :content-encoding]) "gzip")
+            (is (= (get-in resp [:headers "content-encoding"]) "gzip")
                 (format "Expected gzipped response, got this response: %s" resp))))
 
         (testing "an uncompressed response by default"
           ;; The client/get function asks for compression by default
-          (let [resp (http-client/get (format "http://localhost:%d/" port) {:decompress-body false})]
+          (let [resp (http-get (format "http://localhost:%d/" port) {:decompress-body false})]
             (is (= (resp :body) body))
             ;; We should not receive a content-encoding header in the uncompressed case
             (is (nil? (get-in resp [:headers "content-encoding"]))

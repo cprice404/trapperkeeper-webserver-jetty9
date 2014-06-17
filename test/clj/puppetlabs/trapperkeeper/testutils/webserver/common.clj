@@ -3,9 +3,12 @@
 
 (defn http-get
   ([url]
+   ;; TODO: add support for :as :text
    (http-get url {:as :text}))
   ([url options]
-   (http-client/get url options)))
+   (-> (http-client/get url options)
+       ;; TODO: get rid of this hack
+       (update-in [:body] slurp))))
 
 (def jetty-plaintext-config
   {:webserver {:port 8080}})
