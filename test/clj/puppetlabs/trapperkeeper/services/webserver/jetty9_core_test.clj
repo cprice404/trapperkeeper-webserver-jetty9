@@ -30,9 +30,8 @@
         (testing "a gzipped response when requests"
           ;; The client/get function asks for compression by default
           (let [resp (http-get (format "http://localhost:%d/" port))]
-            (println "Got response:" resp)
             (is (= (resp :body) body))
-            (is (= (get-in resp [:headers "content-encoding"]) "gzip")
+            (is (= (resp :orig-content-encoding) "gzip")
                 (format "Expected gzipped response, got this response: %s" resp))))
 
         (testing "an uncompressed response by default"
