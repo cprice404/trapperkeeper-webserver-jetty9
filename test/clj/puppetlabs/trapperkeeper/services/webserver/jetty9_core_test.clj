@@ -35,11 +35,10 @@
                 (format "Expected gzipped response, got this response: %s" resp))))
 
         (testing "an uncompressed response by default"
-          ;; The client/get function asks for compression by default
           (let [resp (http-get (format "http://localhost:%d/" port) {:decompress-body false})]
             (is (= (resp :body) body))
             ;; We should not receive a content-encoding header in the uncompressed case
-            (is (nil? (get-in resp [:headers "content-encoding"]))
+            (is (nil? (resp :orig-content-encoding))
                 (format "Expected uncompressed response, got this response: %s" resp))))))))
 
 (deftest override-webserver-settings!-tests
